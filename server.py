@@ -29,6 +29,7 @@ import sys
 from typing import Annotated, Any, Callable
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import TransportSecuritySettings
 from pydantic import Field
 
 import models
@@ -47,6 +48,22 @@ mcp = FastMCP(
         "Use criar_eap_node para inserir, get_eap_tree para navegar, "
         "get_eap_node para detalhe, validar_estrutura para auditoria de "
         "integridade e listar_por_tipo_frente para agrupar por tipo de serviço."
+    ),
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[
+            "127.0.0.1:*",
+            "localhost:*",
+            "[::1]:*",
+            "mcp-eap-server.onrender.com:*",
+        ],
+        allowed_origins=[
+            "http://127.0.0.1:*",
+            "http://localhost:*",
+            "http://[::1]:*",
+            "http://mcp-eap-server.onrender.com:*",
+            "https://mcp-eap-server.onrender.com:*",
+        ],
     ),
 )
 
