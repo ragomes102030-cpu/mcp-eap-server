@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.envrc
+
+# SQLite local (efêmero — não versionar)
+*.db
+*.sqlite
+*.sqlite3
+eap.db
+
+# IDEs / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Local config overrides
+.env.local
+config.local.py
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

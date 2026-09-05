@@ -1,0 +1,13 @@
+# Servidor MCP de EAP — dependências para deploy HTTP/streamable no Render.
+# Python 3.11+ recomendado.
+
+# SDK oficial do MCP com FastMCP (>= 1.29 tem streamable_http_app)
+mcp==1.29.1
+
+# Validação de schemas (inputs/outputs das tools)
+pydantic==2.13.5
+
+# Servidor ASGI que expõe a app Starlette do MCP via streamable-http
+uvicorn==0.52.4
+starlette==1.6.0
+
