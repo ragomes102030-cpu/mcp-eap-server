@@ -50,20 +50,7 @@ mcp = FastMCP(
         "integridade e listar_por_tipo_frente para agrupar por tipo de serviço."
     ),
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "127.0.0.1:*",
-            "localhost:*",
-            "[::1]:*",
-            "mcp-eap-server.onrender.com:*",
-        ],
-        allowed_origins=[
-            "http://127.0.0.1:*",
-            "http://localhost:*",
-            "http://[::1]:*",
-            "http://mcp-eap-server.onrender.com:*",
-            "https://mcp-eap-server.onrender.com:*",
-        ],
+        enable_dns_rebinding_protection=False,
     ),
 )
 
