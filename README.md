@@ -55,6 +55,13 @@ O servidor expõe o endpoint em `http://localhost:10000/mcp`.
   instalacoes, esquadrias, revestimento, pintura, acabamento, ...`), normalizado e validado.
 - **Quantidade** só permitida em nós-folha (auditado por `validar_estrutura`).
 
+### Idempotência
+As tools de **escrita** (`criar_eap_node`, `atualizar_eap_node`, `deletar_eap_node`,
+`deletar_projeto`) aceitam um parâmetro opcional `request_id`. Reenviar o mesmo
+`request_id` devolve a resposta anterior em vez de executar de novo — evita duplicar
+nós quando um cliente (ex.: Claude) faz retry após timeout. Registros antigos são
+removidos a cada inicialização (TTL de 24h).
+
 ### Migração automática
 Na inicialização, o servidor detecta bancos SQLite no regime antigo (PK simples em `eap_id`)
 e os **migra** automaticamente para a PK composta, preservando os dados (atribui

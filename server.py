@@ -57,6 +57,28 @@ def _seguro(fn: Callable[[], Any]) -> dict[str, Any]:
         return schemas.ErroOutput(erro=str(exc)).model_dump()
 
 
+def _idempotente(
+    request_id: str | None,
+    tool_name: str,
+    payload: Any,
+    fn: Callable[[], Any],
+) -> dict[str, Any]:
+    """Executa ``fn`` com idempotência: se ``request_id`` já processado,
+    devolve a resposta cacheada; senão, executa, salva e devolve.
+
+    ``payload`` é o dict serializável (cache do pedido) e ``fn`` o corpo real
+    da execução da tool (que retorna o dict de saída).
+    """
+    if request_id:
+        cacheado = models.verificar_idempotencia(request_id)
+        if cacheado is not None:
+            return cacheado
+    resultado = _seguro(fn)
+    if request_id:
+        models.salvar_idempotencia(request_id, tool_name, payload, resultado)
+    return resultado
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Seed do exemplo "Piemarta"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -151,11 +173,13 @@ def criar_eap_node(
     tipo_frente: Annotated[str, Field(description="Tipo de serviço, ex.: fundacao.", examples=["fundacao"])] = "",
     unidade: Annotated[str | None, Field(description="Unidade de medida (m², m³, un...).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Quantidade planejada (>= 0).", ge=0)] = None,
+    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
 ) -> dict[str, Any]:
     """Cria um nó na EAP.
 
     Gera o ``EAP_ID`` hierárquico (ex.: "1.2.3"), calcula o ``NIVEL`` como
-    ``pai.nivel + 1`` (ou 1 para raiz) e persiste o nó.
+    ``pai.nivel + 1`` (ou 1 para raiz) e persiste o nó. Reenviar o mesmo
+    ``request_id`` devolve a resposta anterior em vez de duplicar o nó.
     """
 
     def _executar() -> dict[str, Any]:
@@ -185,7 +209,12 @@ def criar_eap_node(
         )
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
-    return _seguro(_executar)
+    payload = {
+        "nome": nome, "parent_id": parent_id, "frente_id": frente_id,
+        "local_id": local_id, "tipo_frente": tipo_frente,
+        "unidade": unidade, "quantidade": quantidade,
+    }
+    return _idempotente(request_id, "criar_eap_node", payload, _executar)
 
 
 @mcp.tool()
@@ -260,6 +289,7 @@ def atualizar_eap_node(
     tipo_frente: Annotated[str | None, Field(description="Novo tipo de serviço (fundacao, estrutura, alvenaria...).", examples=["fundacao"])] = None,
     unidade: Annotated[str | None, Field(description="Nova unidade (m², m³, ml, un, kg, conj, vb, pt).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Nova quantidade planejada (>= 0); só em nós-folha.", ge=0)] = None,
+    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
 ) -> dict[str, Any]:
     """Atualiza campos de um nó existente sem alterar a hierarquia.
 
@@ -280,13 +310,18 @@ def atualizar_eap_node(
         novo = models.atualizar_nodo(eap_id, dados)
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
-    return _seguro(_executar)
+    payload = {
+        "eap_id": eap_id, "nome": nome, "frente_id": frente_id, "local_id": local_id,
+        "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
+    }
+    return _idempotente(request_id, "atualizar_eap_node", payload, _executar)
 
 
 @mcp.tool()
 def deletar_eap_node(
     eap_id: Annotated[str, Field(description="Código hierárquico do nó a deletar, ex.: '1.1.3'.", examples=["1.1.3"])],
     cascade: Annotated[bool, Field(description="Se True, deleta o nó e todos os descendentes. Se False, pede folha.")] = False,
+    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
 ) -> dict[str, Any]:
     """Deleta um nó da EAP.
 
@@ -297,7 +332,10 @@ def deletar_eap_node(
     def _executar() -> dict[str, Any]:
         return models.deletar_nodo(eap_id, cascade=cascade)
 
-    return _seguro(_executar)
+    return _idempotente(
+        request_id, "deletar_eap_node",
+        {"eap_id": eap_id, "cascade": cascade}, _executar,
+    )
 
 
 @mcp.tool()
@@ -314,12 +352,15 @@ def listar_projetos() -> dict[str, Any]:
 @mcp.tool()
 def deletar_projeto(
     project_id: Annotated[str, Field(description="Identificador do projeto a remover, ex.: 'default'.", examples=["default"])],
+    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
 ) -> dict[str, Any]:
     """Deleta TODOS os nós de um projeto. Operação irreversível."""
     def _executar() -> dict[str, Any]:
         return models.deletar_projeto(project_id)
 
-    return _seguro(_executar)
+    return _idempotente(
+        request_id, "deletar_projeto", {"project_id": project_id}, _executar,
+    )
 
 
 @mcp.tool()
@@ -344,6 +385,7 @@ def listar_templates(
 models.init_db()
 _seedados = seed_exemplo()
 _seed_templates = seed_templates()
+_idem_limpos = models.limpar_idempotencia_antiga()
 
 # ``streamable_http_app()`` devolve uma Starlette ASGI application que serve
 # o protocolo MCP streamable-http. Esta é a app que o uvicorn/Render vai servir.
@@ -368,6 +410,12 @@ def main() -> None:
     if _seed_templates:
         print(
             f"[eap-mcp-server] Templates de referência carregados: {_seed_templates}.",
+            file=sys.stderr, flush=True,
+        )
+
+    if _idem_limpos:
+        print(
+            f"[eap-mcp-server] Registros de idempotência antigos removidos: {_idem_limpos}.",
             file=sys.stderr, flush=True,
         )
 

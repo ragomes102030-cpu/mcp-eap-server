@@ -370,6 +370,33 @@ def _salvar_idempotencia(request_id: str, tool_name: str, payload: Any, response
         conn.commit()
 
 
+def verificar_idempotencia(request_id: str) -> dict[str, Any] | None:
+    """API pública: retorna a resposta cacheada p/ um request_id, ou None."""
+    return _verificar_idempotencia(request_id)
+
+
+def salvar_idempotencia(
+    request_id: str, tool_name: str, payload: Any, response: Any
+) -> None:
+    """API pública: salva a resposta p/ idempotência."""
+    _salvar_idempotencia(request_id, tool_name, payload, response)
+
+
+def limpar_idempotencia_antiga(horas: int = 24) -> int:
+    """Remove registros de idempotência mais velhos que ``horas``. Retorna nº removido."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM eap_idempotency WHERE created_at < datetime('now', ?)",
+            (f"-{horas} hours",),
+        )
+        conn.commit()
+    # fetch via count para evitar leak de cursor fora do with
+    removidos = 0
+    if hasattr(cursor, "rowcount") and cursor.rowcount and cursor.rowcount > 0:
+        removidos = int(cursor.rowcount)
+    return removidos
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DAO básico
 # ─────────────────────────────────────────────────────────────────────────────
