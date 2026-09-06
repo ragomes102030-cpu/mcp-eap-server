@@ -54,6 +54,10 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
   mesmo `request_id` devolve cache, não reexecuta.
 - **Migração**: bancos antigos (PK simples) devem ser migrados para PK composta.
   Em Turso antigo, migre manualmente (não assumir automático).
+- **Auditoria em 2 canais**: `validar_estrutura` devolve `problemas` (estruturais,
+  invalidam a árvore — `arvore_valida`) e `avisos` (semânticos, NÃO invalidam):
+  múltiplas raízes por projeto, nome em CAIXA ALTA, agregador com unidade de
+  medida, tipo_frente divergente no nível 2. Use `avisos` para orientar qualidade.
 
 ## Nomenclatura interna (importante)
 

@@ -195,6 +195,11 @@ class ValidarEstruturaOutput(BaseModel):
         title="Problemas",
         description="Lista de mensagens de problemas encontrados.",
     )
+    avisos: list[str] = Field(
+        default_factory=list,
+        title="Avisos",
+        description="Lista de avisos semânticos (não invalidam a árvore; orientam qualidade).",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

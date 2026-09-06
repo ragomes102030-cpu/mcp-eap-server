@@ -67,6 +67,9 @@ O servidor expõe o endpoint em `http://localhost:10000/mcp`.
 - **Quantidade** só permitida em nós-folha (auditado por `validar_estrutura`).
 - **Movimentação**: `mover_eap_node` renumera a subárvore para o novo pai (`EAP_ID`/`NIVEL`)
   e bloqueia ciclos (destino não pode ser o próprio nó nem descendente).
+- **Auditoria em 2 canais**: `validar_estrutura` retorna `problemas` (estruturais,
+  invalidam a árvore) e `avisos` (semânticos — múltiplas raízes, CAIXA ALTA,
+  agregador com unidade de medida, tipo divergente no nível 2).
 
 ### Idempotência
 As tools de **escrita** (`criar_eap_node`, `atualizar_eap_node`, `deletar_eap_node`,

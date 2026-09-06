@@ -267,7 +267,8 @@ def get_eap_tree(
 def validar_estrutura(
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
-    """Percorre a árvore e reporta problemas: órfãos, duplicidades, NIVEL inconsistente."""
+    """Audita a árvore: problemas estruturais (órfãos, duplicidades, NIVEL) e
+    avisos semânticos (múltiplas raízes, CAIXA ALTA, unidade de agregador)."""
 
     def _executar() -> dict[str, Any]:
         resultado = models.validar_estrutura(project_id)

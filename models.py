@@ -1042,6 +1042,12 @@ def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
       * NIVEL inconsistente com a posição real na árvore (pai.nivel + 1);
       * quantidade em nó não-folha (dupla contagem de quantitativos);
       * tipo_frente do filho divergente do pai nos níveis >= 2 (coerência).
+
+    Além dos ``problemas`` (integridade estrutural — invalidam a árvore), devolve
+    ``avisos`` semânticos que NÃO invalidam: múltiplas raízes por projeto, nome
+    em CAIXA ALTA, agregador carregando unidade de medida e tipo_frente
+    divergente já no nível 2. Use ``avisos`` para orientar qualidade sem quebrar
+    a auditoria estrutural.
     """
     if project_id is None:
         project_id = DEFAULT_PROJECT_ID
@@ -1089,13 +1095,53 @@ def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
     for raiz in _raizes(project_id):
         _percorre(raiz, 1)
 
+    # ── Avisos semânticos (não invalidam a árvore; orientam qualidade) ──
+    avisos: list[str] = []
+    raizes = _raizes(project_id)
+    if len(raizes) > 1:
+        avisos.append(
+            f"Projeto tem {len(raizes)} raízes "
+            f"({', '.join(r['eap_id'] for r in raizes)}): "
+            "considere 1 raiz por obra (EAP mais legível e comparável)."
+        )
+    _UNIDADES_MEDIDA = {"m²", "m³", "ml", "kg"}
+
+    def _semantica(nodo: dict[str, Any], nivel: int) -> None:
+        filhos = listar_filhos(nodo["eap_id"], project_id)
+        nome = nodo.get("nome") or ""
+        if nome.isupper() and any(ch.isalpha() for ch in nome):
+            avisos.append(
+                f"Nó '{nodo['eap_id']}' com nome em CAIXA ALTA "
+                f"({nome[:45]!r}): prefira Capitalização de Frase."
+            )
+        if filhos and nodo.get("unidade") in _UNIDADES_MEDIDA:
+            avisos.append(
+                f"Nó '{nodo['eap_id']}' é agregador (tem {len(filhos)} filho(s)) "
+                f"mas carrega unidade de medida '{nodo.get('unidade')}': "
+                "deixe a unidade para as folhas."
+            )
+        for filho in filhos:
+            if (nivel == 1 and filho.get("tipo_frente") and nodo.get("tipo_frente")
+                    and filho["tipo_frente"] != nodo["tipo_frente"]):
+                avisos.append(
+                    f"Filho '{filho['eap_id']}' (tipo {filho['tipo_frente']}) diverge "
+                    f"do pai '{nodo['eap_id']}' ({nodo['tipo_frente']}) no nível 2."
+                )
+            _semantica(filho, nivel + 1)
+
+    for raiz in raizes:
+        _semantica(raiz, 1)
+    avisos.sort()
+
     return {
         "resumo": {
             "total_nos": len(todos),
             "total_problemas": len(problemas),
+            "total_avisos": len(avisos),
             "arvore_valida": len(problemas) == 0,
         },
         "problemas": problemas,
+        "avisos": avisos,
     }
 
 
