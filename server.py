@@ -1,25 +1,23 @@
-"""Servidor MCP (Model Context Protocol) de EAP para obras de construção civil.
+"""Servidor MCP (Model Context Protocol) de EAP para obras de construcao civil.
 
-Esta é a versão HTTP/streamable do servidor, projetada para deploy em nuvem
-(Render, Railway, Fly.io etc.). O servidor original ``mcp-eap`` (Desktop) usa
-stdio local; esta versão troca o transporte para ``streamable-http`` expondo
-uma app ASGI (Starlette) que pode ser servida por uvicorn.
+Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (mesmas 5 do servidor local):
+Ferramentas expostas (10 tools):
+  * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
+  * get_eap_tree           retorna a arvore em JSON aninhado
+  * get_eap_node           retorna um no especifico
+  * atualizar_eap_node     atualiza campos de um no existente
+  * deletar_eap_node       deleta um no (com cascade opcional)
+  * deletar_projeto        deleta todos os nos de um projeto
+  * listar_projetos        lista projetos com contagem de nos
+  * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
+  * listar_por_tipo_frente filtra nos por tipo de frente de servico
+  * listar_templates       lista exemplos reais de EAP (templates)
 
-  * criar_eap_node         cria nó, gera EAP_ID hierárquico e calcula NIVEL
-  * get_eap_tree           retorna a árvore em JSON aninhado
-  * get_eap_node           retorna um nó específico
-  * validar_estrutura      detecta órfãos, duplicidades e NIVEL inconsistente
-  * listar_por_tipo_frente filtra nós por tipo de frente de serviço
-
-Variáveis de ambiente:
-  * PORT — porta TCP (padrão 10000). O Render injeta automaticamente.
-
-Como rodar:
-  * Local:           ``python server.py``
-  * Com uvicorn:     ``uvicorn server:app --host 0.0.0.0 --port 10000``
-  * Procfile Render: ``web: uvicorn server:app --host 0.0.0.0 --port $PORT``
+Variaveis de ambiente:
+  * PORT — porta TCP (padrao 10000). O Render injeta automaticamente.
+  * TURSO_URL — URL do banco Turso (libSQL). Se vazio, usa sqlite3 local.
+  * TURSO_TOKEN — token de autenticacao do Turso.
 """
 
 from __future__ import annotations
@@ -35,19 +33,15 @@ from pydantic import Field
 import models
 import schemas
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Servidor FastMCP
-# ─────────────────────────────────────────────────────────────────────────────
-
 mcp = FastMCP(
     name="eap-server",
     instructions=(
-        "Servidor MCP de Estrutura Analítica do Projeto (EAP) de obras. "
-        "Gerencia nós hierárquicos (EAP_ID no formato '1.2.3') com PARENT_ID, "
-        "NIVEL, FRENTE_ID, LOCAL_ID, TIPO_FRENTE, NOME, UNIDADE e QUANTIDADE. "
+        "Servidor MCP de Estrutura Analitica do Projeto (EAP) de obras. "
+        "Gerencia nos hierarquicos (EAP_ID no formato '1.2.3') com PARENT_ID, "
+        "NIVEL, PROJECT_ID, FRENTE_ID, LOCAL_ID, TIPO_FRENTE, NOME, UNIDADE e QUANTIDADE. "
         "Use criar_eap_node para inserir, get_eap_tree para navegar, "
-        "get_eap_node para detalhe, validar_estrutura para auditoria de "
-        "integridade e listar_por_tipo_frente para agrupar por tipo de serviço."
+        "get_eap_node para detalhe, atualizar_eap_node para atualizar, "
+        "deletar_eap_node para remover, validar_estrutura para auditoria."
     ),
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
@@ -55,18 +49,11 @@ mcp = FastMCP(
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Wrapper central de erro — reaproveitado por TODAS as tools.
-# Nenhuma tool lança exceção ao protocolo: em qualquer falha devolve
-# {"erro": "<mensagem>"}.
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def _seguro(fn: Callable[[], Any]) -> dict[str, Any]:
-    """Executa ``fn`` e converte qualquer exceção em resposta de erro."""
+    """Executa fn e converte qualquer excecao em resposta de erro."""
     try:
         return fn()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return schemas.ErroOutput(erro=str(exc)).model_dump()
 
 
@@ -102,8 +89,56 @@ def seed_exemplo() -> int:
     return len(amostra)
 
 
+def seed_templates() -> int:
+    """Insere exemplos reais de EAP se a tabela estiver vazia."""
+    if models.contar_templates() > 0:
+        return 0
+
+    templates = [
+        # Casa residencial - fundacao
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "1.1", "Escavacao sapatas", "m³", 48.5, 12.0, "0.8 h/m³", "composicao_tipo"),
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "1.2", "Concreto sapatas", "m³", 12.3, 3.0, "1.2 h/m³", "composicao_tipo"),
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "1.3", "Aco sapatas", "kg", 850.0, 200.0, None, "composicao_tipo"),
+        # Casa residencial - estrutura
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "2.1", "Pilares concreto", "m³", 8.5, 2.0, "2.5 h/m³", "composicao_tipo"),
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "2.2", "Vigas concreto", "m³", 14.0, 3.5, "2.0 h/m³", "composicao_tipo"),
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "2.3", "Laje pre-moldada", "m²", 100.0, 15.0, "0.4 h/m²", "composicao_tipo"),
+        # Casa residencial - alvenaria
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "3.1", "Blocos 6 furos", "m²", 185.0, 30.0, "0.5 h/m²", "composicao_tipo"),
+        ("casa", 80, 150, "alvenaria_estrutural", "sudeste", "3.2", "Vergas e contravergas", "ml", 42.0, 10.0, None, "composicao_tipo"),
+        # Casa residencial - cobertura
+        ("casa", 80, 150, None, None, "4.1", "Estrutura metalica", "conj", 1.0, 0.0, None, "composicao_tipo"),
+        ("casa", 80, 150, None, None, "4.2", "Telhas ceramica", "m²", 120.0, 20.0, "0.3 h/m²", "composicao_tipo"),
+        # Casa residencial - instalacoes
+        ("casa", 80, 150, None, None, "5.1", "Eletrica", "conj", 1.0, 0.0, None, "composicao_tipo"),
+        ("casa", 80, 150, None, None, "5.2", "Hidraulica", "conj", 1.0, 0.0, None, "composicao_tipo"),
+        ("casa", 80, 150, None, None, "5.3", "Esgoto", "conj", 1.0, 0.0, None, "composicao_tipo"),
+        # Casa residencial - acabamento
+        ("casa", 80, 150, None, None, "6.1", "Chapisco", "m²", 360.0, 50.0, "0.08 h/m²", "composicao_tipo"),
+        ("casa", 80, 150, None, None, "6.2", "Reboco", "m²", 360.0, 50.0, "0.12 h/m²", "composicao_tipo"),
+        ("casa", 80, 150, None, None, "6.3", "Piso ceramico", "m²", 85.0, 15.0, "0.25 h/m²", "composicao_tipo"),
+        ("casa", 80, 150, None, None, "6.4", "Pintura", "m²", 280.0, 40.0, "0.05 h/m²", "composicao_tipo"),
+        # Apartamento - concreto armado
+        ("apartamento", 60, 120, "concreto_armado", "sul", "2.1", "Laje pre-moldada", "m²", 80.0, 10.0, "0.4 h/m²", "composicao_tipo"),
+        ("apartamento", 60, 120, "concreto_armado", "sul", "2.2", "Concreto laje", "m³", 8.5, 2.0, "1.0 h/m³", "composicao_tipo"),
+        # Reforma
+        ("reforma", 40, 200, None, None, "1.1", "Remocao piso existente", "m²", 65.0, 20.0, "0.15 h/m²", "composicao_tipo"),
+        ("reforma", 40, 200, None, None, "1.2", "Remocada bancada cozinha", "un", 1.0, 0.0, None, "composicao_tipo"),
+        ("reforma", 40, 200, None, None, "4.1", "Piso vinilico", "m²", 45.0, 10.0, "0.20 h/m²", "composicao_tipo"),
+        ("reforma", 40, 200, None, None, "4.4", "Pintura geral", "m²", 180.0, 30.0, "0.05 h/m²", "composicao_tipo"),
+    ]
+    for t in templates:
+        models.inserir_template({
+            "projeto_tipo": t[0], "area_m2_min": t[1], "area_m2_max": t[2],
+            "metodo_construtivo": t[3], "regiao": t[4], "eap_node": t[5],
+            "nome": t[6], "unidade": t[7], "quantidade_media": t[8],
+            "desvio_padrao": t[9], "produtividade": t[10], "fonte": t[11],
+        })
+    return len(templates)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Tools — cópia fiel da versão stdio (eap-mcp)
+# Tools
 # ─────────────────────────────────────────────────────────────────────────────
 
 
