@@ -81,6 +81,10 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
   camada de dados (gate de cobertura 70% em `models.py`) + 3 baterias
   funcionais (servidor isolado). O CI (`.github/workflows/ci.yml`) executa
   ruff (F/E9), py_compile, unit+cov e as baterias a cada push/PR.
+- **Corpus sintético**: `gerador_corpus.py` gera N obras (ex.: 300) com EAP
+  válida **por construção** — `validar_estrutura` retorna 0 problemas e 0
+  avisos em 100% dos projetos (teste em `tests/test_corpus.py`). Determinístico
+  via `--seed`; aborta se `TURSO_URL` estiver definida (nunca gera em produção).
 
 ## Escopo (Fase 1 vs Fase 2) — NÃO misturar
 

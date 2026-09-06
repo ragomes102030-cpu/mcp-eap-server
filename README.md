@@ -99,6 +99,22 @@ estiverem definidas. URLs `libsql://...` são convertidas automaticamente para
 `https://` (Turso novos recusam o handshake WebSocket do Hrana com HTTP 400);
 bancos Turso **novos** já nascem com a PK composta.
 
+## Corpus de referência (gerador de EAPs)
+
+`gerador_corpus.py` cria **N obras com EAP 100% válida por construção**
+(`validar_estrutura` → `0 problemas` **e** `0 avisos` em todos os projetos):
+1 raiz por obra, nomes capitalizados, `tipo_frente` coerente pai→filho,
+quantidade só em folhas e unidades no vocabulário fechado.
+
+```bash
+python gerador_corpus.py --projetos 300 --seed 7 --db _corpus.db
+```
+
+Medido (seed 7, sqlite local): 300 projetos / 10.500 nós em ~3 min.
+Determinístico (mesmo `--seed` → mesmo corpus) e **nunca roda contra Turso**
+(aborta se `TURSO_URL` estiver definida). Use para testes, benchmarks e
+referência histórica antes de popular produção.
+
 ## Deploy no Render
 
 1. Conecte o repositório GitHub
