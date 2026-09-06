@@ -19,15 +19,15 @@ SQLite local com fallback para **Turso/libSQL** em produção.
 |---|---|
 | `models.py` | Camada de dados: schema, DAO, árvore, validação, migração e idempotência |
 | `schemas.py` | Schemas Pydantic de entrada/saída |
-| `server.py` | FastMCP: 10 tools, wrapper de erro `_seguro`, idempotência e seeds |
+| `server.py` | FastMCP: 11 tools, wrapper de erro `_seguro`, idempotência e seeds |
 
 **Camadas rígidas**: `server.py` (apresentação MCP) nunca toca SQL direto;
 `models.py` (dados) nunca importa `mcp`/`schemas`. Mantenha essa separação.
 
-## Ferramentas expostas (10)
+## Ferramentas expostas (11)
 
 - **Estrutura**: `criar_eap_node`, `get_eap_tree`, `get_eap_node`, `validar_estrutura`
-- **Manutenção**: `atualizar_eap_node`, `deletar_eap_node`, `listar_projetos`, `deletar_projeto`
+- **Manutenção**: `atualizar_eap_node`, `deletar_eap_node`, `mover_eap_node`, `listar_projetos`, `deletar_projeto`
 - **Consulta**: `listar_por_tipo_frente`, `listar_templates`
 
 ## Regras de integridade (NÃO violar)
@@ -42,6 +42,8 @@ SQLite local com fallback para **Turso/libSQL** em produção.
 - **Quantidade** só é permitida em **nós-folha** (sem filhos). `validar_estrutura`
   audita dupla contagem.
 - **Hierarquia**: `nivel = pai.nivel + 1` (1 para raiz). `EAP_ID` deriva da posição.
+- **Movimento**: `mover_eap_node` move nó + subárvore reenumerando `EAP_ID`/`NIVEL`
+  (ex.: `1.2`→sob `2.1` vira `2.1.x`) e bloqueia ciclos (destino = próprio nó ou descendente).
 - **Idempotência**: tools de escrita aceitam `request_id` opcional; reenvio do
   mesmo `request_id` devolve cache, não reexecuta.
 - **Migração**: bancos antigos (PK simples) devem ser migrados para PK composta.
@@ -90,5 +92,4 @@ fora do versionamento — não os edite nem os includa em commits nesta Fase 1.
 ## Roadmap pendente (não feito)
 
 1. Soft-delete (`ativo`) + `eap_id_history` para auditoria de rebaixamento/movimento.
-2. `move_eap_node` com bloqueio de ciclo (destino não pode ser descendente).
-3. `nivel_confianca` (herdado pai→filho).
+2. `nivel_confianca` (herdado pai→filho).

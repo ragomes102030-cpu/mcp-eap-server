@@ -718,6 +718,182 @@ def montar_arvore(
     return [_montar(r) for r in roots]
 
 
+def mover_nodo(
+    eap_id: str,
+    novo_parent_id: str | None,
+    project_id: str = DEFAULT_PROJECT_ID,
+) -> dict[str, Any]:
+    """Move um nó (e sua subárvore) para um novo pai.
+
+    Redimensiona ``EAP_ID``/``NIVEL`` dos descendentes preservando a estrutura
+    relativa. Bloqueia movimento que criaria ciclo.
+    """
+    no = buscar_por_eap_id(eap_id, project_id)
+    if no is None:
+        raise ValueError(f"EAP_ID '{eap_id}' não encontrado no projeto '{project_id}'")
+
+    if novo_parent_id is not None:
+        pai = buscar_por_eap_id(novo_parent_id, project_id)
+        if pai is None:
+            raise ValueError(
+                f"NOVO_PARENT_ID '{novo_parent_id}' não existe no projeto '{project_id}'."
+            )
+        if novo_parent_id == eap_id:
+            raise ValueError("Não é possível mover um nó para ser filho dele mesmo.")
+        descendentes = set(_subarvore_ids(eap_id, project_id)) - {eap_id}
+        if novo_parent_id in descendentes:
+            raise ValueError(
+                f"Não é possível mover '{eap_id}' para '{novo_parent_id}': "
+                "isso cria um ciclo (o destino é um descendente do nó)."
+            )
+
+    sub = _coletar_subarvore(eap_id, project_id)
+    return _executar_move(sub, eap_id, novo_parent_id, project_id)
+
+
+def _subarvore_ids(eap_id: str, project_id: str) -> list[str]:
+    """EAP_IDs da subárvore (eu + descendentes), em ordem."""
+    ids: list[str] = []
+
+    def _coleta(nid: str) -> None:
+        ids.append(nid)
+        for f in listar_filhos(nid, project_id):
+            _coleta(f["eap_id"])
+
+    _coleta(eap_id)
+    return ids
+
+
+def _coletar_subarvore(
+    eap_id: str, project_id: str
+) -> list[dict[str, Any]]:
+    """Lista de {eap_id, parent_id, nivel, dados} da subárvore."""
+    from collections import deque
+
+    out: list[dict[str, Any]] = []
+    raiz = buscar_por_eap_id(eap_id, project_id)
+    if raiz is None:
+        return out
+
+    # BFS para coletar os nós com seus pais originais
+    fila: deque[dict[str, Any]] = deque([raiz])
+    while fila:
+        n = fila.popleft()
+        out.append(
+            {
+                "eap_id": n["eap_id"],
+                "parent_id": n["parent_id"],
+                "nivel": n["nivel"],
+                "dados": n,
+            }
+        )
+        for f in listar_filhos(n["eap_id"], project_id):
+            fila.append(f)
+    return out
+
+
+def _executar_move(
+    sub: list[dict[str, Any]],
+    eap_id: str,
+    novo_parent_id: str | None,
+    project_id: str,
+) -> dict[str, Any]:
+    """Reinsere a subárvore re-numerada sob o novo pai, atomicamente."""
+    raiz_antigo = eap_id
+
+    # Novo código e nível da raiz movida.
+    if novo_parent_id is None:
+        tops = [r["eap_id"] for r in _raizes(project_id)]
+        seg = max((_ultimo_segmento(s) for s in tops), default=0) + 1
+        novo_codigo_raiz = str(seg)
+        novo_nivel = 1
+    else:
+        irmaos = listar_filhos(novo_parent_id, project_id)
+        seg = max((_ultimo_segmento(f["eap_id"]) for f in irmaos), default=0) + 1
+        novo_codigo_raiz = f"{novo_parent_id}.{seg}"
+        pai_alvo = buscar_por_eap_id(novo_parent_id, project_id)
+        novo_nivel = (pai_alvo["nivel"] + 1) if pai_alvo else 1
+
+    # Próximos códigos por BFS usando os parent_id antigos.
+    novo_id: dict[str, str] = {raiz_antigo: novo_codigo_raiz}
+    nivel_novo: dict[str, int] = {raiz_antigo: novo_nivel}
+    filhos_por_pai: dict[str, list[dict[str, Any]]] = {}
+    for n in sub:
+        filhos_por_pai.setdefault(n["parent_id"], []).append(n)
+    for k in filhos_por_pai:
+        filhos_por_pai[k].sort(key=lambda x: _chave_ordem(x["eap_id"]))
+
+    from collections import deque
+
+    fila: deque[str] = deque([raiz_antigo])
+    while fila:
+        atual = fila.popleft()
+        novo_pai_cod = novo_id[atual]
+        nivel_atual = nivel_novo[atual]
+        seq = 0
+        for filho in filhos_por_pai.get(atual, []):
+            seq += 1
+            novo_id[filho["eap_id"]] = (
+                f"{novo_pai_cod}.{seq}" if novo_pai_cod else f"{seq}"
+            )
+            nivel_novo[filho["eap_id"]] = nivel_atual + 1
+            fila.append(filho["eap_id"])
+
+    # parent_id novo (por código novo). A raiz movida recebe o ``novo_parent_id``
+    # direto; os descendentes recebem o código novo do pai antigo (já mapeado).
+    novo_pai_map: dict[str, str | None] = {}
+    for n in sub:
+        cod = novo_id[n["eap_id"]]
+        if cod == novo_codigo_raiz:
+            novo_pai_map[cod] = novo_parent_id
+        else:
+            antigo_pai = n["parent_id"]
+            novo_pai_map[cod] = novo_id.get(antigo_pai)
+
+    # Persistência atômica (deletar antigos + reinserir novos).
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM eap_node WHERE project_id = ? AND eap_id IN ({0})".format(
+                ",".join("?" for _ in novo_id)
+            ),
+            (project_id, *novo_id.keys()),
+        )
+        for n in sub:
+            antigo = n["eap_id"]
+            dados = n["dados"]
+            conn.execute(
+                """
+                INSERT INTO eap_node (
+                    eap_id, parent_id, nivel, project_id, frente_id, local_id,
+                    tipo_frente, nome, unidade, quantidade, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    novo_id[antigo],
+                    novo_pai_map[novo_id[antigo]],
+                    nivel_novo[antigo],
+                    project_id,
+                    dados.get("frente_id"),
+                    dados.get("local_id"),
+                    dados.get("tipo_frente"),
+                    dados["nome"],
+                    dados.get("unidade"),
+                    dados.get("quantidade"),
+                    dados.get("created_at") or _agora_iso(),
+                    _agora_iso(),
+                ),
+            )
+        conn.commit()
+
+    return {
+        "movido": True,
+        "eap_id": novo_codigo_raiz,
+        "novo_parent_id": novo_pai_map.get(novo_codigo_raiz),
+        "nivel": novo_nivel,
+        "nos_renumerados": len(sub),
+    }
+
+
 def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
     """Percorre toda a árvore e reporta problemas de integridade.
 

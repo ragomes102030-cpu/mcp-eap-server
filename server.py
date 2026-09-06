@@ -2,12 +2,13 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (10 tools):
+Ferramentas expostas (11 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
   * atualizar_eap_node     atualiza campos de um no existente
   * deletar_eap_node       deleta um no (com cascade opcional)
+  * mover_eap_node         move um no (e subarvore) para outro pai, reenumerando
   * deletar_projeto        deleta todos os nos de um projeto
   * listar_projetos        lista projetos com contagem de nos
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
@@ -41,7 +42,8 @@ mcp = FastMCP(
         "NIVEL, PROJECT_ID, FRENTE_ID, LOCAL_ID, TIPO_FRENTE, NOME, UNIDADE e QUANTIDADE. "
         "Use criar_eap_node para inserir, get_eap_tree para navegar, "
         "get_eap_node para detalhe, atualizar_eap_node para atualizar, "
-        "deletar_eap_node para remover, validar_estrutura para auditoria."
+        "deletar_eap_node para remover, mover_eap_node para reorganizar a arvore, "
+        "validar_estrutura para auditoria."
     ),
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
@@ -335,6 +337,29 @@ def deletar_eap_node(
     return _idempotente(
         request_id, "deletar_eap_node",
         {"eap_id": eap_id, "cascade": cascade}, _executar,
+    )
+
+
+@mcp.tool()
+def move_eap_node(
+    eap_id: Annotated[str, Field(description="Codigo hierarquico do no a mover, ex.: '1.2'.", examples=["1.2"])],
+    novo_parent_id: Annotated[str | None, Field(description="EAP_ID do novo pai. Nulo/omitido = mover para a raiz (vira no de topo).", examples=["2.1", None])] = None,
+    request_id: Annotated[str | None, Field(description="Idempotencia: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
+) -> dict[str, Any]:
+    """Move um no (e toda a sua subarvore) para um novo pai.
+
+    Renumera o EAP_ID e o NIVEL do no e de todos os descendentes preservando a
+    estrutura relativa (ex.: mover '1.2' para sob '2.1' o transforma em '2.1.x'
+    com NIVEL recalibrado). Rejeita movimentos que criariam ciclo (destino
+    dentro da propria subarvore do no movido).
+    """
+
+    def _executar() -> dict[str, Any]:
+        return models.mover_nodo(eap_id, novo_parent_id)
+
+    return _idempotente(
+        request_id, "move_eap_node",
+        {"eap_id": eap_id, "novo_parent_id": novo_parent_id}, _executar,
     )
 
 

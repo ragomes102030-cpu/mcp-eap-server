@@ -1,10 +1,10 @@
 # MCP EAP Server
 
 Servidor MCP (Model Context Protocol) de EAP (Estrutura Analítica do Projeto)
-para obras de construção civil. Expõe 10 ferramentas via HTTP/streamable
+para obras de construção civil. Expõe 11 ferramentas via HTTP/streamable
 para clientes MCP (Claude Desktop, VS Code, etc.).
 
-## Ferramentas (10 tools)
+## Ferramentas (11 tools)
 
 ### Estrutura
 | Tool | Descrição |
@@ -19,6 +19,7 @@ para clientes MCP (Claude Desktop, VS Code, etc.).
 |---|---|
 | `atualizar_eap_node` | Atualiza campos de um nó (valida unidade e tipo_frente) |
 | `deletar_eap_node` | Deleta nó (folha) ou subárvore inteira (`cascade=true`) |
+| `mover_eap_node` | Move nó + subárvore para outro pai, reenumerando EAP_ID/NIVEL e bloqueando ciclos |
 | `listar_projetos` | Lista projetos e a contagem de nós de cada um |
 | `deletar_projeto` | Remove todas as EAPs de um projeto (irreversível) |
 
@@ -54,10 +55,12 @@ O servidor expõe o endpoint em `http://localhost:10000/mcp`.
 - **tipo_frente** em vocabulário fechado (`fundacao, estrutura, alvenaria, cobertura,
   instalacoes, esquadrias, revestimento, pintura, acabamento, ...`), normalizado e validado.
 - **Quantidade** só permitida em nós-folha (auditado por `validar_estrutura`).
+- **Movimentação**: `mover_eap_node` renumera a subárvore para o novo pai (`EAP_ID`/`NIVEL`)
+  e bloqueia ciclos (destino não pode ser o próprio nó nem descendente).
 
 ### Idempotência
 As tools de **escrita** (`criar_eap_node`, `atualizar_eap_node`, `deletar_eap_node`,
-`deletar_projeto`) aceitam um parâmetro opcional `request_id`. Reenviar o mesmo
+`mover_eap_node`, `deletar_projeto`) aceitam um parâmetro opcional `request_id`. Reenviar o mesmo
 `request_id` devolve a resposta anterior em vez de executar de novo — evita duplicar
 nós quando um cliente (ex.: Claude) faz retry após timeout. Registros antigos são
 removidos a cada inicialização (TTL de 24h).
