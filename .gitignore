@@ -20,6 +20,9 @@ ENV/
 *.sqlite3
 eap.db
 
+# Backups de restauração locais
+__restore_*/
+
 # IDEs / OS
 .DS_Store
 Thumbs.db

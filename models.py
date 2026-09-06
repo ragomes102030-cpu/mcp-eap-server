@@ -27,10 +27,10 @@ DB_PATH = Path(__file__).resolve().parent / "eap.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS eap_node (
-    eap_id       TEXT PRIMARY KEY,
-    parent_id    TEXT REFERENCES eap_node(eap_id) ON DELETE SET NULL,
+    project_id   TEXT NOT NULL,
+    eap_id       TEXT NOT NULL,
+    parent_id    TEXT,
     nivel        INTEGER NOT NULL,
-    project_id   TEXT,
     frente_id    TEXT,
     local_id     TEXT,
     tipo_frente  TEXT,
@@ -38,7 +38,10 @@ CREATE TABLE IF NOT EXISTS eap_node (
     unidade      TEXT,
     quantidade   REAL,
     created_at   TEXT DEFAULT (datetime('now')),
-    updated_at   TEXT DEFAULT (datetime('now'))
+    updated_at   TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (project_id, eap_id),
+    FOREIGN KEY (project_id, parent_id)
+        REFERENCES eap_node(project_id, eap_id)
 );
 CREATE INDEX IF NOT EXISTS ix_eap_node_parent      ON eap_node(parent_id);
 CREATE INDEX IF NOT EXISTS ix_eap_node_tipo_frente ON eap_node(tipo_frente);
@@ -80,6 +83,63 @@ _NORMALIZACAO_UNIDADES = {
     "ml": "ml", "un": "un", "kg": "kg", "conj": "conj", "vb": "vb", "pt": "pt",
 }
 
+# Vocabulário fechado de tipos de frente de serviço (obra real). Mantém a
+# classificação estável para consultas e relatórios — o LLM não inventa valores.
+TIPOS_FRENTE_VALIDOS = {
+    "projeto", "preliminares", "fundacao", "estrutura", "alvenaria",
+    "cobertura", "instalacoes", "esquadrias", "revestimento", "pintura",
+    "acabamento", "infraestrutura", "paisagismo",
+}
+
+_NORMALIZACAO_TIPOS = {
+    "fundações": "fundacao", "fundacao": "fundacao",
+    "estrutura": "estrutura",
+    "alvenaria": "alvenaria", "alvenaria_estrutural": "alvenaria",
+    "cobertura": "cobertura", "cubierta": "cobertura", "telhado": "cobertura",
+    "instalacoes": "instalacoes", "instalacoes_eletricas": "instalacoes",
+    "instalacoes_hidrossanitarias": "instalacoes", "hidrossanitaria": "instalacoes",
+    "eletrica": "instalacoes", "hidraulica": "instalacoes",
+    "esquadrias": "esquadrias", "esquinerias": "esquadrias", "esquadria": "esquadrias",
+    "revestimento": "revestimento",
+    "pintura": "pintura",
+    "acabamento": "acabamento",
+    "infraestrutura": "infraestrutura", "infra": "infraestrutura",
+    "paisagismo": "paisagismo",
+    "preliminares": "preliminares", "projeto": "projeto",
+}
+
+
+def normalizar_tipo_frente(tipo: str | None) -> str | None:
+    """Normaliza um tipo de frente de serviço pro vocabulário fechado.
+
+    Rejeita valores fora do dicionário em vez de gravar dados sujos.
+    Retorna None quando o campo está vazio/ausente.
+    """
+    if not tipo:
+        return None
+    t = tipo.strip().lower().replace("_", " ").strip()
+    # tenta primeiro o valor canônico, depois os sinônimos normalizados
+    if t.replace(" ", "_") in TIPOS_FRENTE_VALIDOS:
+        return t.replace(" ", "_")
+    normalizado = _NORMALIZACAO_TIPOS.get(t) or _NORMALIZACAO_TIPOS.get(t.replace(" ", "_"))
+    if normalizado is not None:
+        return normalizado
+    raise ValueError(
+        f"Tipo de frente '{tipo}' não reconhecido. "
+        f"Válidos: {', '.join(sorted(TIPOS_FRENTE_VALIDOS))}"
+    )
+
+
+def _chave_ordem(eap_id: str) -> tuple[int, ...]:
+    """Chave de ordenação natural: '1.10' vem antes de '1.2'? Não — 1.2 < 1.10.
+
+    Divide o código hierárquico em tupla de inteiros para ORDER em Python.
+    """
+    try:
+        return tuple(int(p) for p in eap_id.split(".") if p.strip())
+    except ValueError:
+        return tuple(0 for _ in eap_id)
+
 _TURSO_URL = os.environ.get("TURSO_URL", "")
 _TURSO_TOKEN = os.environ.get("TURSO_TOKEN", "")
 
@@ -103,11 +163,15 @@ def normalizar_unidade(unidade: str | None) -> str | None:
     return normalizada
 
 
-def validar_quantidade_so_em_folha(eap_id: str | None, quantidade: float | None) -> None:
+def validar_quantidade_so_em_folha(
+    eap_id: str | None,
+    quantidade: float | None,
+    project_id: str | None = None,
+) -> None:
     """Quantidades só em nós-folha. Se tem filhos, quantidade deve ser None."""
     if quantidade is None or quantidade == 0:
         return
-    filhos = listar_filhos(eap_id) if eap_id else []
+    filhos = listar_filhos(eap_id, project_id) if eap_id else []
     if filhos:
         raise ValueError(
             f"Quantidade só permitida em nós-folha. "
@@ -178,6 +242,80 @@ def init_db() -> None:
     with _connect() as conn:
         conn.executescript(SCHEMA)
         conn.commit()
+    _migrar_eap_node_para_multiprojeto()
+
+
+def _migrar_eap_node_para_multiprojeto() -> None:
+    """Migra ``eap_node`` da PK simples (``eap_id``) para PK composta.
+
+    Aplica-se a bancos SQLite locais. Em Turso (libSQL), a recriação de
+    tabela DDL não é feita aqui por segurança: bancos Turso **novos** já usam
+    o SCHEMA com PK composta. Se você já tem um database Turso no regime
+    antigo (PK simples em ``eap_id``) e precisa de multi-projeto, aplique o
+    SCHEMA a PK composta manualmente (CREATE TABLE novo + migração dos dados)
+    antes do deploy. Esta função é idempotente.
+    """
+    with _connect() as conn:
+        if isinstance(conn, _TursoConn):
+            return  # Turso/sqld gerencia esse schema; aplica-se manualmente
+        cursor = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='eap_node'"
+        )
+        row = cursor.fetchone()
+    if not row:
+        return
+    sql = row["sql"].strip().lower()
+    tem_pk_simples_eap_id = re.search(r"\beap_id\s+text\s+primary\s+key\b", sql)
+    if tem_pk_simples_eap_id:
+        # Regime antigo: recria copiando dados, atribuindo DEFAULT_PROJECT_ID.
+        with _connect() as conn:
+            # Desliga FK temporariamente: a FK composta ainda referencia a tabela
+            # antiga (PK simples), o que o SQLite recusa na criação.
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript(
+                """
+                CREATE TABLE eap_node_novo (
+                    project_id   TEXT NOT NULL,
+                    eap_id       TEXT NOT NULL,
+                    parent_id    TEXT,
+                    nivel        INTEGER NOT NULL,
+                    frente_id    TEXT,
+                    local_id     TEXT,
+                    tipo_frente  TEXT,
+                    nome         TEXT NOT NULL,
+                    unidade      TEXT,
+                    quantidade   REAL,
+                    created_at   TEXT DEFAULT (datetime('now')),
+                    updated_at   TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (project_id, eap_id),
+                    FOREIGN KEY (project_id, parent_id)
+                        REFERENCES eap_node(project_id, eap_id)
+                );
+                """
+            )
+            conn.execute(
+                f"""
+                INSERT INTO eap_node_novo (
+                    project_id, eap_id, parent_id, nivel, frente_id, local_id,
+                    tipo_frente, nome, unidade, quantidade, created_at, updated_at
+                )
+                SELECT '{DEFAULT_PROJECT_ID}', eap_id, parent_id, nivel, frente_id,
+                       local_id, tipo_frente, nome, unidade, quantidade,
+                       created_at, updated_at
+                FROM eap_node
+                """
+            )
+            conn.execute("DROP TABLE eap_node")
+            conn.execute("ALTER TABLE eap_node_novo RENAME TO eap_node")
+            conn.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS ix_eap_node_parent      ON eap_node(parent_id);
+                CREATE INDEX IF NOT EXISTS ix_eap_node_tipo_frente ON eap_node(tipo_frente);
+                CREATE INDEX IF NOT EXISTS ix_eap_node_project     ON eap_node(project_id);
+                """
+            )
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,40 +375,62 @@ def _salvar_idempotencia(request_id: str, tool_name: str, payload: Any, response
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def buscar_por_eap_id(eap_id: str) -> dict[str, Any] | None:
-    """Retorna um nó pelo EAP_ID, ou None se não existir."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM eap_node WHERE eap_id = ?", (eap_id,)
-        )
+def buscar_por_eap_id(
+    eap_id: str, project_id: str | None = None
+) -> dict[str, Any] | None:
+    """Retorna um nó pelo EAP_ID (dentro do projeto), ou None se não existir."""
+    if project_id is None:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE eap_id = ?", (eap_id,)
+            )
+    else:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE eap_id = ? AND project_id = ?",
+                (eap_id, project_id),
+            )
     row = cursor.fetchone()
     if row is None:
         return None
     return dict(row) if not isinstance(row, dict) else row
 
 
-def listar_filhos(parent_id: str) -> list[dict[str, Any]]:
-    """Retorna os filhos diretos de um nó, ordenados pelo código."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM eap_node WHERE parent_id = ? ORDER BY eap_id",
-            (parent_id,),
-        )
-    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+def listar_filhos(
+    parent_id: str, project_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Retorna os filhos diretos de um nó, ordenados pelo código hierárquico."""
+    if project_id is None:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE parent_id = ?",
+                (parent_id,),
+            )
+    else:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE parent_id = ? AND project_id = ?",
+                (parent_id, project_id),
+            )
+    rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+    rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return rows
 
 
 def listar_todos(project_id: str | None = None) -> list[dict[str, Any]]:
-    """Retorna todos os nós, ordenados por código hierárquico. Filtra por project_id se informado."""
+    """Retorna todos os nós, ordenados pelo código hierárquico. Filtra por project_id se informado."""
     if project_id:
         with _connect() as conn:
             cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE project_id = ? ORDER BY eap_id",
+                "SELECT * FROM eap_node WHERE project_id = ?",
                 (project_id,),
             )
     else:
         with _connect() as conn:
-            cursor = conn.execute("SELECT * FROM eap_node ORDER BY eap_id")
-    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+            cursor = conn.execute("SELECT * FROM eap_node")
+    rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+    rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return rows
 
 
 def _ultimo_segmento(eap_id: str) -> int:
@@ -282,7 +442,7 @@ def _ultimo_segmento(eap_id: str) -> int:
 
 
 def proximo_eap_id(parent_id: str | None, project_id: str = DEFAULT_PROJECT_ID) -> str:
-    """Gera o próximo EAP_ID hierárquico."""
+    """Gera o próximo EAP_ID hierárquico (sem reutilizar códigos deletados)."""
     if parent_id is None:
         with _connect() as conn:
             cursor = conn.execute(
@@ -293,8 +453,12 @@ def proximo_eap_id(parent_id: str | None, project_id: str = DEFAULT_PROJECT_ID) 
         seq = max((_ultimo_segmento(r["eap_id"]) for r in rows), default=0) + 1
         return str(seq)
 
-    irmaos = listar_filhos(parent_id)
-    proximo_irmao = len(irmaos) + 1
+    irmaos = listar_filhos(parent_id, project_id)
+    if irmaos:
+        ultimo = max(_ultimo_segmento(r["eap_id"]) for r in irmaos)
+        proximo_irmao = ultimo + 1
+    else:
+        proximo_irmao = 1
     return f"{parent_id}.{proximo_irmao}"
 
 
@@ -302,8 +466,18 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
     """Insere um nó e devolve o registro completo persistido."""
     unidade = normalizar_unidade(dados.get("unidade"))
     quantidade = dados.get("quantidade")
+    project_id = dados.get("project_id", DEFAULT_PROJECT_ID)
+    tipo_frente = normalizar_tipo_frente(dados.get("tipo_frente"))
 
-    validar_quantidade_so_em_folha(None, quantidade)
+    # Validação referencial: mãe precisa existir no mesmo projeto.
+    if dados.get("parent_id") is not None:
+        pai = buscar_por_eap_id(dados["parent_id"], project_id)
+        if pai is None:
+            raise ValueError(
+                f"PARENT_ID '{dados['parent_id']}' não existe no projeto '{project_id}'."
+            )
+
+    validar_quantidade_so_em_folha(None, quantidade, project_id)
 
     with _connect() as conn:
         conn.execute(
@@ -317,10 +491,10 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 dados["eap_id"],
                 dados.get("parent_id"),
                 dados["nivel"],
-                dados.get("project_id", DEFAULT_PROJECT_ID),
+                project_id,
                 dados.get("frente_id"),
                 dados.get("local_id"),
-                dados.get("tipo_frente"),
+                tipo_frente,
                 dados["nome"],
                 unidade,
                 quantidade,
@@ -329,19 +503,24 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
             ),
         )
         conn.commit()
-    return buscar_por_eap_id(dados["eap_id"])  # type: ignore[return-value]
+    return buscar_por_eap_id(dados["eap_id"], project_id)  # type: ignore[return-value]
 
 
 def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
     """Atualiza campos de um nó existente."""
-    existente = buscar_por_eap_id(eap_id)
+    project_id = dados.pop("project_id", DEFAULT_PROJECT_ID)
+    existente = buscar_por_eap_id(eap_id, project_id)
     if existente is None:
-        raise ValueError(f"EAP_ID '{eap_id}' não encontrado")
+        raise ValueError(f"EAP_ID '{eap_id}' não encontrado no projeto '{project_id}'")
 
+    if "unidade" in dados:
+        normalizar_unidade(dados.get("unidade"))
     unidade = normalizar_unidade(dados.get("unidade")) if "unidade" in dados else None
     quantidade = dados.get("quantidade") if "quantidade" in dados else None
+    if "tipo_frente" in dados:
+        dados["tipo_frente"] = normalizar_tipo_frente(dados.get("tipo_frente"))
 
-    validar_quantidade_so_em_folha(eap_id, quantidade)
+    validar_quantidade_so_em_folha(eap_id, quantidade, project_id)
 
     campos = []
     valores = []
@@ -365,24 +544,32 @@ def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
 
     with _connect() as conn:
         conn.execute(
-            f"UPDATE eap_node SET {', '.join(campos)} WHERE eap_id = ?",
-            tuple(valores),
+            f"UPDATE eap_node SET {', '.join(campos)} WHERE eap_id = ? AND project_id = ?",
+            tuple(valores[:]) + (project_id,),
         )
         conn.commit()
-    return buscar_por_eap_id(eap_id)  # type: ignore[return-value]
+    return buscar_por_eap_id(eap_id, project_id)  # type: ignore[return-value]
 
 
-def deletar_nodo(eap_id: str, cascade: bool = False) -> dict[str, Any]:
+def deletar_nodo(
+    eap_id: str,
+    cascade: bool = False,
+    project_id: str | None = None,
+) -> dict[str, Any]:
     """Deleta um nó. Se cascade=True, deleta todos os descendentes."""
-    existente = buscar_por_eap_id(eap_id)
+    if project_id is None:
+        project_id = (
+            buscar_por_eap_id(eap_id) or {}
+        ).get("project_id", DEFAULT_PROJECT_ID)
+    existente = buscar_por_eap_id(eap_id, project_id)
     if existente is None:
-        raise ValueError(f"EAP_ID '{eap_id}' não encontrado")
+        raise ValueError(f"EAP_ID '{eap_id}' não encontrado no projeto '{project_id}'")
 
     if cascade:
-        for filho in listar_filhos(eap_id):
-            deletar_nodo(filho["eap_id"], cascade=True)
+        for filho in listar_filhos(eap_id, project_id):
+            deletar_nodo(filho["eap_id"], cascade=True, project_id=project_id)
     else:
-        filhos = listar_filhos(eap_id)
+        filhos = listar_filhos(eap_id, project_id)
         if filhos:
             raise ValueError(
                 f"Nó '{eap_id}' tem {len(filhos)} filho(s). "
@@ -390,9 +577,12 @@ def deletar_nodo(eap_id: str, cascade: bool = False) -> dict[str, Any]:
             )
 
     with _connect() as conn:
-        conn.execute("DELETE FROM eap_node WHERE eap_id = ?", (eap_id,))
+        conn.execute(
+            "DELETE FROM eap_node WHERE eap_id = ? AND project_id = ?",
+            (eap_id, project_id),
+        )
         conn.commit()
-    return {"deletado": True, "eap_id": eap_id}
+    return {"deletado": True, "eap_id": eap_id, "project_id": project_id}
 
 
 def deletar_projeto(project_id: str) -> dict[str, Any]:
@@ -420,17 +610,29 @@ def listar_projetos() -> list[dict[str, Any]]:
             ORDER BY project_id
             """
         )
-    return cursor.fetchall()
-
-
-def listar_por_tipo_frente(tipo_frente: str) -> list[dict[str, Any]]:
-    """Retorna todos os nós que pertencem a um tipo de frente de serviço."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM eap_node WHERE tipo_frente = ? ORDER BY eap_id",
-            (tipo_frente,),
-        )
     return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+
+
+def listar_por_tipo_frente(
+    tipo_frente: str,
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Retorna todos os nós que pertencem a um tipo de frente de serviço."""
+    if project_id:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE tipo_frente = ? AND project_id = ?",
+                (tipo_frente, project_id),
+            )
+    else:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE tipo_frente = ?",
+                (tipo_frente,),
+            )
+    rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+    rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return rows
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -438,55 +640,71 @@ def listar_por_tipo_frente(tipo_frente: str) -> list[dict[str, Any]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _raizes() -> list[dict[str, Any]]:
-    """Todos os nós sem pai (raízes da EAP)."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM eap_node WHERE parent_id IS NULL ORDER BY eap_id"
-        )
-    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+def _raizes(project_id: str | None = None) -> list[dict[str, Any]]:
+    """Todos os nós sem pai (raízes da EAP), opcionalmente por projeto."""
+    if project_id:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE parent_id IS NULL AND project_id = ?",
+                (project_id,),
+            )
+    else:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM eap_node WHERE parent_id IS NULL"
+            )
+    rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+    rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return rows
 
 
-def montar_arvore(eap_id: str | None = None) -> list[dict[str, Any]]:
+def montar_arvore(
+    eap_id: str | None = None,
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Monta a(s) árvore(s) aninhada(s) e retorna uma lista de raízes.
 
     Cada raiz carrega seus dados + uma chave ``filhos`` com os sub-nós
-    (recursivo). Chamado sem ``eap_id`` devolve todas as raízes da EAP;
+    (recursivo). Chamado sem ``eap_id`` devolve todas as raízes do projeto;
     com ``eap_id`` devolve a subárvore enraizada nesse nó (1 elemento).
 
     Erros (``ValueError``): nó inexistente ou EAP vazia.
     """
     if eap_id:
-        raiz = buscar_por_eap_id(eap_id)
+        raiz = buscar_por_eap_id(eap_id, project_id)
         if raiz is None:
             raise ValueError(f"EAP_ID '{eap_id}' não encontrado na árvore")
         roots: Iterable[dict[str, Any]] = [raiz]
+        scope = raiz.get("project_id") or project_id or DEFAULT_PROJECT_ID
     else:
-        roots = _raizes()
+        roots = _raizes(project_id)
+        scope = project_id
 
     if not roots:
         raise ValueError("A EAP está vazia — nenhum nó para exibir.")
 
     def _montar(nodo: dict[str, Any]) -> dict[str, Any]:
         no = dict(nodo)
-        no["filhos"] = [_montar(f) for f in listar_filhos(nodo["eap_id"])]
+        no["filhos"] = [_montar(f) for f in listar_filhos(nodo["eap_id"], scope)]
         return no
 
     return [_montar(r) for r in roots]
 
 
-def validar_estrutura() -> dict[str, Any]:
+def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
     """Percorre toda a árvore e reporta problemas de integridade.
 
     Verifica:
       * duplicidade de EAP_ID (EAP_ID repetido em mais de uma linha);
       * nós órfãos (PARENT_ID aponta para um EAP_ID que não existe);
-      * NIVEL inconsistente com a posição real na árvore (pai.nivel + 1).
+      * NIVEL inconsistente com a posição real na árvore (pai.nivel + 1);
+      * quantidade em nó não-folha (dupla contagem de quantitativos);
+      * tipo_frente do filho divergente do pai nos níveis >= 2 (coerência).
     """
     problemas: list[str] = []
-    todos = listar_todos()
+    todos = listar_todos(project_id)
 
-    # 1. Duplicidade de EAP_ID.
+    # 1. Duplicidade de EAP_ID (agora via PK composta, mas mantido para robustez).
     vistos: dict[str, int] = {}
     for n in todos:
         vistos[n["eap_id"]] = vistos.get(n["eap_id"], 0) + 1
@@ -508,10 +726,23 @@ def validar_estrutura() -> dict[str, Any]:
                 f"Nó '{nodo['eap_id']}' tem NIVEL {nodo['nivel']}, "
                 f"mas está na posição {nivel_esperado} da árvore"
             )
-        for filho in listar_filhos(nodo["eap_id"]):
+        filhos = listar_filhos(nodo["eap_id"], project_id)
+        # 4/5 coerência de tipo_frente e quantidade em não-folha (acumuladas aqui)
+        if nodo.get("quantidade") is not None and filhos:
+            problemas.append(
+                f"Nó '{nodo['eap_id']}' tem quantidade {nodo['quantidade']} "
+                f"mas não é folha — dupla contagem no quantitativo."
+            )
+        for filho in filhos:
+            if nivel_esperado >= 2 and filho.get("tipo_frente") and nodo.get("tipo_frente"):
+                if filho["tipo_frente"] != nodo["tipo_frente"]:
+                    problemas.append(
+                        f"Filho '{filho['eap_id']}' (tipo {filho['tipo_frente']}) "
+                        f"diverge do pai '{nodo['eap_id']}' ({nodo['tipo_frente']})."
+                    )
             _percorre(filho, nivel_esperado + 1)
 
-    for raiz in _raizes():
+    for raiz in _raizes(project_id):
         _percorre(raiz, 1)
 
     return {
@@ -587,7 +818,7 @@ def listar_templates(
 
     with _connect() as conn:
         cursor = conn.execute(sql, tuple(params))
-    return cursor.fetchall()
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
 def contar_templates() -> int:

@@ -68,15 +68,15 @@ def seed_exemplo() -> int:
         return 0
 
     amostra: list[tuple[Any, ...]] = [
-        ("1",       None,  1, "FR-001", "BLOCO-A", "fundacao",  "FUNDAÇÕES",        "conj", None),
-        ("1.1",     "1",   2, "FR-001", "BLOCO-A", "fundacao",  "SAPATAS",          "conj", 24),
-        ("1.1.1",   "1.1", 3, "FR-001", "BLOCO-A", "fundacao",  "ESCAVAÇÃO SAPATAS", "m³", 1280.0),
-        ("1.1.2",   "1.1", 3, "FR-001", "BLOCO-A", "estrutura", "CONCRETO SAPATAS",  "m³", 240.0),
-        ("1.2",     "1",   2, "FR-001", "BLOCO-A", "estrutura", "VIGAS BALDRAME",    "ml", 320.0),
-        ("1.2.1",   "1.2", 3, "FR-001", "BLOCO-A", "estrutura", "CONCRETO VIGAS",    "m³", 86.0),
-        ("2",       None,  1, "FR-002", "BLOCO-B", "estrutura", "ESTRUTURA",         "conj", None),
-        ("2.1",     "2",   2, "FR-002", "BLOCO-B", "estrutura", "PILARES",           "un", 42),
-        ("2.1.1",   "2.1", 3, "FR-002", "BLOCO-B", "estrutura", "CONCRETO PILARES",  "m³", 520.0),
+        ("1",       None,  1, "FR-001", "BLOCO-A", "fundacao",   "FUNDAÇÕES",           "conj", None),
+        ("1.1",     "1",   2, "FR-001", "BLOCO-A", "fundacao",   "SAPATAS",             "conj", None),
+        ("1.1.1",   "1.1", 3, "FR-001", "BLOCO-A", "fundacao",   "ESCAVAÇÃO SAPATAS",   "m³", 1280.0),
+        ("1.1.2",   "1.1", 3, "FR-001", "BLOCO-A", "fundacao",   "CONCRETO SAPATAS",    "m³", 240.0),
+        ("1.2",     "1",   2, "FR-001", "BLOCO-A", "estrutura",  "VIGAS BALDRAME",      "conj", None),
+        ("1.2.1",   "1.2", 3, "FR-001", "BLOCO-A", "estrutura",  "CONCRETO VIGAS",      "m³", 86.0),
+        ("2",       None,  1, "FR-002", "BLOCO-B", "estrutura",  "ESTRUTURA",           "conj", None),
+        ("2.1",     "2",   2, "FR-002", "BLOCO-B", "estrutura",  "PILARES",             "conj", None),
+        ("2.1.1",   "2.1", 3, "FR-002", "BLOCO-B", "estrutura",  "CONCRETO PILARES",    "m³", 520.0),
     ]
     for linha in amostra:
         models.inserir_nodo(
@@ -247,12 +247,103 @@ def listar_por_tipo_frente(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CRUD completo (tools de manutenção da EAP)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def atualizar_eap_node(
+    eap_id: Annotated[str, Field(description="Código hierárquico do nó a atualizar, ex.: '1.1.1'.", examples=["1.1.1"])],
+    nome: Annotated[str | None, Field(description="Nova descrição legível.", examples=["Sapata S1B"])] = None,
+    frente_id: Annotated[str | None, Field(description="Nova frente de serviço.", examples=["FR-001"])] = None,
+    local_id: Annotated[str | None, Field(description="Novo local/ambiente.", examples=["BLOCO-A"])] = None,
+    tipo_frente: Annotated[str | None, Field(description="Novo tipo de serviço (fundacao, estrutura, alvenaria...).", examples=["fundacao"])] = None,
+    unidade: Annotated[str | None, Field(description="Nova unidade (m², m³, ml, un, kg, conj, vb, pt).", examples=["m³"])] = None,
+    quantidade: Annotated[float | None, Field(description="Nova quantidade planejada (>= 0); só em nós-folha.", ge=0)] = None,
+) -> dict[str, Any]:
+    """Atualiza campos de um nó existente sem alterar a hierarquia.
+
+    Passe apenas os campos a alterar. Valida unidade e tipo_frente no
+    vocabulário fechado e rejeita quantidade em nó com filhos.
+    """
+
+    def _executar() -> dict[str, Any]:
+        dados = {k: v for k, v in {
+            "nome": nome, "frente_id": frente_id, "local_id": local_id,
+            "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
+        }.items() if v is not None}
+        if not dados:
+            atual = models.buscar_por_eap_id(eap_id)
+            if atual is None:
+                return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
+            return schemas.EAPNodeOutput.model_validate(atual).model_dump()
+        novo = models.atualizar_nodo(eap_id, dados)
+        return schemas.EAPNodeOutput.model_validate(novo).model_dump()
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def deletar_eap_node(
+    eap_id: Annotated[str, Field(description="Código hierárquico do nó a deletar, ex.: '1.1.3'.", examples=["1.1.3"])],
+    cascade: Annotated[bool, Field(description="Se True, deleta o nó e todos os descendentes. Se False, pede folha.")] = False,
+) -> dict[str, Any]:
+    """Deleta um nó da EAP.
+
+    Com ``cascade=True`` remove toda a subárvore; com ``cascade=False`` só
+    permite deletar nós-folha (sem filhos).
+    """
+
+    def _executar() -> dict[str, Any]:
+        return models.deletar_nodo(eap_id, cascade=cascade)
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def listar_projetos() -> dict[str, Any]:
+    """Lista todos os projetos cadastrados e a contagem de nós de cada um."""
+    def _executar() -> dict[str, Any]:
+        projetos = models.listar_projetos()
+        total_nos = sum(p["total_nos"] for p in projetos)
+        return {"projetos": projetos, "total_projetos": len(projetos), "total_nos": total_nos}
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def deletar_projeto(
+    project_id: Annotated[str, Field(description="Identificador do projeto a remover, ex.: 'default'.", examples=["default"])],
+) -> dict[str, Any]:
+    """Deleta TODOS os nós de um projeto. Operação irreversível."""
+    def _executar() -> dict[str, Any]:
+        return models.deletar_projeto(project_id)
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def listar_templates(
+    projeto_tipo: Annotated[str | None, Field(description="Tipo de obra p/ filtrar (casa, apartamento, reforma).", examples=["casa"])] = None,
+    area_m2: Annotated[float | None, Field(description="Área construída (m²) p/ filtrar template compatível.", ge=0)] = None,
+    metodo_construtivo: Annotated[str | None, Field(description="Método construtivo, ex.: alvenaria_estrutural.", examples=["alvenaria_estrutural"])] = None,
+) -> dict[str, Any]:
+    """Lista templates de EAP reais (referência histórica de orçamento)."""
+    def _executar() -> dict[str, Any]:
+        templates = models.listar_templates(projeto_tipo, area_m2, metodo_construtivo)
+        return {"templates": templates, "total": len(templates)}
+
+    return _seguro(_executar)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # App ASGI para uvicorn (streamable-http)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 models.init_db()
 _seedados = seed_exemplo()
+_seed_templates = seed_templates()
 
 # ``streamable_http_app()`` devolve uma Starlette ASGI application que serve
 # o protocolo MCP streamable-http. Esta é a app que o uvicorn/Render vai servir.
@@ -273,6 +364,12 @@ def main() -> None:
         )
     else:
         print("[eap-mcp-server] Banco já populado; mantido como está.", file=sys.stderr, flush=True)
+
+    if _seed_templates:
+        print(
+            f"[eap-mcp-server] Templates de referência carregados: {_seed_templates}.",
+            file=sys.stderr, flush=True,
+        )
 
     uvicorn.run(app, host=host, port=porta)
 
