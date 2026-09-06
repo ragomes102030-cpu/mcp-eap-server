@@ -146,6 +146,20 @@ _TURSO_TOKEN = os.environ.get("TURSO_TOKEN", "")
 DEFAULT_PROJECT_ID = "default"
 
 
+def _normalizar_turso_url(url: str) -> str:
+    """Turso novos (ex.: *.aws-us-east-1.turso.io) recusam o handshake WebSocket
+    do Hrana (400); o transporte HTTP (https://) funciona. Converte o scheme
+    ``libsql://``/``ws(s)://`` em ``http(s)://`` para usar HTTP.
+    """
+    if url.startswith("libsql://"):
+        return "https://" + url[len("libsql://"):]
+    if url.startswith("wss://"):
+        return "https://" + url[len("wss://"):]
+    if url.startswith("ws://"):
+        return "http://" + url[len("ws://"):]
+    return url
+
+
 def _agora_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -180,15 +194,30 @@ def validar_quantidade_so_em_folha(
         )
 
 
+_turso_client: Any = None
+
+
+def _get_turso_client() -> Any:
+    """ClientSync único (evita vazar uma sessão aiohttp a cada _connect())."""
+    global _turso_client
+    if _turso_client is None:
+        import libsql_client
+
+        # API síncrona (ClientSync): create_client (async, aiohttp) exigiria
+        # um event loop rodando, o que quebraria o DAO síncrono deste módulo.
+        # ``_normalizar_turso_url`` troca libsql:// por https:// (Turso novos
+        # recusam o handshake WebSocket com HTTP 400).
+        _turso_client = libsql_client.create_client_sync(
+            url=_normalizar_turso_url(_TURSO_URL), auth_token=_TURSO_TOKEN
+        )
+    return _turso_client
+
+
 class _TursoConn:
     """Wrapper que emula a API sqlite3 usando libsql_client (Turso)."""
 
     def __init__(self) -> None:
-        import libsql_client
-
-        self._client = libsql_client.create_client(
-            url=_TURSO_URL, auth_token=_TURSO_TOKEN
-        )
+        self._client = _get_turso_client()
 
     def execute(self, sql: str, params: tuple = ()) -> "_TursoCursor":
         converted = sql

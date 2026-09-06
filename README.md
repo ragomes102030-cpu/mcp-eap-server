@@ -81,6 +81,11 @@ o sistema de arquivos é **efêmero** — dados são perdidos a cada redeploy. C
 Para migrar um banco criado antes desta versão (PK simples), basta subir o servidor:
 a migração é aplicada automaticamente ao primeiro `init_db()`.
 
+**Turso (libSQL)**: o servidor usa o Turso sempre que `TURSO_URL` e `TURSO_TOKEN`
+estiverem definidas. URLs `libsql://...` são convertidas automaticamente para
+`https://` (Turso novos recusam o handshake WebSocket do Hrana com HTTP 400);
+bancos Turso **novos** já nascem com a PK composta.
+
 ## Deploy no Render
 
 1. Conecte o repositório GitHub
