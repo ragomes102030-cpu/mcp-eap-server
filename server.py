@@ -2,7 +2,7 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (11 tools):
+Ferramentas expostas (13 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
@@ -11,6 +11,8 @@ Ferramentas expostas (11 tools):
   * mover_eap_node         move um no (e subarvore) para outro pai, reenumerando
   * deletar_projeto        deleta todos os nos de um projeto
   * listar_projetos        lista projetos com contagem de nos
+  * criar_projeto          cria um novo projeto (obra) com metadados
+  * atualizar_projeto      atualiza metadados de um projeto (obra)
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
   * listar_templates       lista exemplos reais de EAP (templates)
@@ -110,6 +112,13 @@ def seed_exemplo() -> int:
                 "nome": linha[6], "unidade": linha[7], "quantidade": linha[8],
             }
         )
+    # Metadados do projeto de exemplo (default ja tem linha via auto-registro).
+    try:
+        models.atualizar_projeto(
+            "default", nome="Piemarta (exemplo)", tipo_obra="edificio_residencial",
+        )
+    except Exception:
+        pass
     return len(amostra)
 
 
@@ -176,6 +185,7 @@ def criar_eap_node(
     unidade: Annotated[str | None, Field(description="Unidade de medida (m², m³, un...).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Quantidade planejada (>= 0).", ge=0)] = None,
     request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Cria um nó na EAP.
 
@@ -185,13 +195,14 @@ def criar_eap_node(
     """
 
     def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
         dados = schemas.CriarEAPNodeInput(
             parent_id=parent_id, frente_id=frente_id, local_id=local_id,
             tipo_frente=tipo_frente, nome=nome, unidade=unidade, quantidade=quantidade,
         )
 
         if dados.parent_id is not None:
-            pai = models.buscar_por_eap_id(dados.parent_id)
+            pai = models.buscar_por_eap_id(dados.parent_id, pid)
             if pai is None:
                 return schemas.ErroOutput(
                     erro=f"PARENT_ID '{dados.parent_id}' não existe na EAP."
@@ -200,10 +211,11 @@ def criar_eap_node(
         else:
             nivel = 1
 
-        eap_id = models.proximo_eap_id(dados.parent_id)
+        eap_id = models.proximo_eap_id(dados.parent_id, pid)
         novo = models.inserir_nodo(
             {
                 "eap_id": eap_id, "parent_id": dados.parent_id, "nivel": nivel,
+                "project_id": pid,
                 "frente_id": dados.frente_id, "local_id": dados.local_id,
                 "tipo_frente": dados.tipo_frente, "nome": dados.nome,
                 "unidade": dados.unidade, "quantidade": dados.quantidade,
@@ -222,11 +234,13 @@ def criar_eap_node(
 @mcp.tool()
 def get_eap_node(
     eap_id: Annotated[str, Field(description="Código hierárquico do nó, ex.: '1.2.3'.", examples=["1.2.3"])],
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Retorna os dados de um nó específico da EAP."""
 
     def _executar() -> dict[str, Any]:
-        node = models.buscar_por_eap_id(eap_id)
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        node = models.buscar_por_eap_id(eap_id, pid)
         if node is None:
             return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
         return schemas.EAPNodeOutput.model_validate(node).model_dump()
@@ -237,22 +251,26 @@ def get_eap_node(
 @mcp.tool()
 def get_eap_tree(
     eap_id: Annotated[str | None, Field(description="Opcional: subárvore deste nó; omitido = árvore inteira.", examples=["1"])] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Retorna a EAP em estrutura JSON aninhada (inteira ou subárvore)."""
 
     def _executar() -> dict[str, Any]:
-        raizes = models.montar_arvore(eap_id)
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        raizes = models.montar_arvore(eap_id, pid)
         return schemas.ArvoreEAPOutput(raizes=raizes).model_dump()
 
     return _seguro(_executar)
 
 
 @mcp.tool()
-def validar_estrutura() -> dict[str, Any]:
+def validar_estrutura(
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
+) -> dict[str, Any]:
     """Percorre a árvore e reporta problemas: órfãos, duplicidades, NIVEL inconsistente."""
 
     def _executar() -> dict[str, Any]:
-        resultado = models.validar_estrutura()
+        resultado = models.validar_estrutura(project_id)
         return schemas.ValidarEstruturaOutput.model_validate(resultado).model_dump()
 
     return _seguro(_executar)
@@ -261,6 +279,7 @@ def validar_estrutura() -> dict[str, Any]:
 @mcp.tool()
 def listar_por_tipo_frente(
     tipo_frente: Annotated[str, Field(description="Tipo de serviço a filtrar, ex.: 'estrutura'.", examples=["estrutura"], min_length=1)],
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Retorna todos os nós de um TIPO_FRENTE em qualquer parte da árvore.
 
@@ -268,7 +287,8 @@ def listar_por_tipo_frente(
     """
 
     def _executar() -> dict[str, Any]:
-        nodes = models.listar_por_tipo_frente(tipo_frente)
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        nodes = models.listar_por_tipo_frente(tipo_frente, pid)
         return schemas.ListarPorTipoFrenteOutput(
             tipo_frente=tipo_frente, total=len(nodes),
             nos=[schemas.EAPNodeOutput.model_validate(n) for n in nodes],
@@ -292,6 +312,7 @@ def atualizar_eap_node(
     unidade: Annotated[str | None, Field(description="Nova unidade (m², m³, ml, un, kg, conj, vb, pt).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Nova quantidade planejada (>= 0); só em nós-folha.", ge=0)] = None,
     request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Atualiza campos de um nó existente sem alterar a hierarquia.
 
@@ -300,12 +321,14 @@ def atualizar_eap_node(
     """
 
     def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
         dados = {k: v for k, v in {
             "nome": nome, "frente_id": frente_id, "local_id": local_id,
             "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
         }.items() if v is not None}
+        dados["project_id"] = pid
         if not dados:
-            atual = models.buscar_por_eap_id(eap_id)
+            atual = models.buscar_por_eap_id(eap_id, pid)
             if atual is None:
                 return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
             return schemas.EAPNodeOutput.model_validate(atual).model_dump()
@@ -324,6 +347,7 @@ def deletar_eap_node(
     eap_id: Annotated[str, Field(description="Código hierárquico do nó a deletar, ex.: '1.1.3'.", examples=["1.1.3"])],
     cascade: Annotated[bool, Field(description="Se True, deleta o nó e todos os descendentes. Se False, pede folha.")] = False,
     request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Deleta um nó da EAP.
 
@@ -332,7 +356,8 @@ def deletar_eap_node(
     """
 
     def _executar() -> dict[str, Any]:
-        return models.deletar_nodo(eap_id, cascade=cascade)
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        return models.deletar_nodo(eap_id, cascade=cascade, project_id=pid)
 
     return _idempotente(
         request_id, "deletar_eap_node",
@@ -345,6 +370,7 @@ def move_eap_node(
     eap_id: Annotated[str, Field(description="Codigo hierarquico do no a mover, ex.: '1.2'.", examples=["1.2"])],
     novo_parent_id: Annotated[str | None, Field(description="EAP_ID do novo pai. Nulo/omitido = mover para a raiz (vira no de topo).", examples=["2.1", None])] = None,
     request_id: Annotated[str | None, Field(description="Idempotencia: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Move um no (e toda a sua subarvore) para um novo pai.
 
@@ -355,7 +381,8 @@ def move_eap_node(
     """
 
     def _executar() -> dict[str, Any]:
-        return models.mover_nodo(eap_id, novo_parent_id)
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        return models.mover_nodo(eap_id, novo_parent_id, pid)
 
     return _idempotente(
         request_id, "move_eap_node",
@@ -386,6 +413,59 @@ def deletar_projeto(
     return _idempotente(
         request_id, "deletar_projeto", {"project_id": project_id}, _executar,
     )
+
+
+@mcp.tool()
+def criar_projeto(
+    project_id: Annotated[str, Field(description="Identificador único do projeto (obra). Use letras, números, hífen ou underscore.", examples=["residencial-jardim", "default"])],
+    nome: Annotated[str | None, Field(description="Nome legível da obra. Default: igual a project_id.", examples=["Residencial Jardim das Flores"])] = None,
+    tipo_obra: Annotated[str | None, Field(description="Tipo da obra, ex.: casa, apartamento, reforma, edificio_comercial.", examples=["casa"])] = None,
+    area_m2: Annotated[float | None, Field(description="Área construída em m².", ge=0)] = None,
+    metodo_construtivo: Annotated[str | None, Field(description="Método construtivo, ex.: alvenaria_estrutural.", examples=["alvenaria_estrutural"])] = None,
+    regiao: Annotated[str | None, Field(description="Região do projeto, ex.: sudeste.", examples=["sudeste"])] = None,
+    cliente: Annotated[str | None, Field(description="Cliente ou incorporadora.", examples=["Cliente Exemplo LTDA"])] = None,
+) -> dict[str, Any]:
+    """Cria um novo projeto (obra) com metadados.
+
+    Cada obra vive em seu próprio ``project_id``. Depois de criar, use
+    ``project_id`` nas demais tools para trabalhar na EAP da obra.
+    """
+
+    def _executar() -> dict[str, Any]:
+        projeto = models.criar_projeto(
+            project_id,
+            nome=nome, tipo_obra=tipo_obra, area_m2=area_m2,
+            metodo_construtivo=metodo_construtivo,
+            regiao=regiao, cliente=cliente,
+        )
+        return schemas.ProjetoOutput.model_validate(projeto).model_dump()
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def atualizar_projeto(
+    project_id: Annotated[str, Field(description="Identificador do projeto a atualizar.", examples=["default"])],
+    nome: Annotated[str | None, Field(description="Nome legível da obra.", examples=["Residencial Jardim das Flores"])] = None,
+    tipo_obra: Annotated[str | None, Field(description="Tipo da obra.", examples=["casa"])] = None,
+    area_m2: Annotated[float | None, Field(description="Área construída em m².", ge=0)] = None,
+    metodo_construtivo: Annotated[str | None, Field(description="Método construtivo.", examples=["alvenaria_estrutural"])] = None,
+    regiao: Annotated[str | None, Field(description="Região do projeto.", examples=["sudeste"])] = None,
+    cliente: Annotated[str | None, Field(description="Cliente ou incorporadora.", examples=["Cliente Exemplo LTDA"])] = None,
+    ativo: Annotated[bool | None, Field(description="Se False, marca o projeto como inativo (não apaga dados).")] = None,
+) -> dict[str, Any]:
+    """Atualiza os metadados de um projeto existente."""
+    def _executar() -> dict[str, Any]:
+        projeto = models.atualizar_projeto(
+            project_id,
+            nome=nome, tipo_obra=tipo_obra, area_m2=area_m2,
+            metodo_construtivo=metodo_construtivo,
+            regiao=regiao, cliente=cliente,
+            ativo=(1 if ativo else 0) if ativo is not None else None,
+        )
+        return schemas.ProjetoOutput.model_validate(projeto).model_dump()
+
+    return _seguro(_executar)
 
 
 @mcp.tool()

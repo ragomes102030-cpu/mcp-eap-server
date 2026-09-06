@@ -1,10 +1,22 @@
 # MCP EAP Server
 
 Servidor MCP (Model Context Protocol) de EAP (Estrutura Analítica do Projeto)
-para obras de construção civil. Expõe 11 ferramentas via HTTP/streamable
+para obras de construção civil. Expõe 13 ferramentas via HTTP/streamable
 para clientes MCP (Claude Desktop, VS Code, etc.).
 
-## Ferramentas (11 tools)
+**Projeto = obra**: cada obra vive no seu `project_id` (tabela `eap_project`
+com metadados: nome, tipo_obra, área, método, região, cliente). As tools de
+nó aceitam `project_id` opcional (padrão `default`) e são escopadas ao projeto.
+
+## Ferramentas (13 tools)
+
+### Projetos
+| Tool | Descrição |
+|---|---|
+| `criar_projeto` | Cria uma obra/projeto com metadados (project_id, nome, tipo_obra, area_m2, método, região, cliente) |
+| `atualizar_projeto` | Atualiza metadados de um projeto existente |
+| `listar_projetos` | Lista projetos com metadados e contagem de nós |
+| `deletar_projeto` | Remove todas as EAPs e os metadados de um projeto (irreversível) |
 
 ### Estrutura
 | Tool | Descrição |
@@ -20,8 +32,6 @@ para clientes MCP (Claude Desktop, VS Code, etc.).
 | `atualizar_eap_node` | Atualiza campos de um nó (valida unidade e tipo_frente) |
 | `deletar_eap_node` | Deleta nó (folha) ou subárvore inteira (`cascade=true`) |
 | `mover_eap_node` | Move nó + subárvore para outro pai, reenumerando EAP_ID/NIVEL e bloqueando ciclos |
-| `listar_projetos` | Lista projetos e a contagem de nós de cada um |
-| `deletar_projeto` | Remove todas as EAPs de um projeto (irreversível) |
 
 ### Consultas e referência
 | Tool | Descrição |

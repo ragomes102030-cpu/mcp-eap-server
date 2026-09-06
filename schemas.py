@@ -208,3 +208,67 @@ class ErroOutput(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ProjetoOutput(BaseModel):
+    """Representação de um projeto (obra) com metadados e contagem de nós."""
+
+    project_id: str = Field(
+        title="ID do projeto",
+        description="Identificador único do projeto (obra).",
+    )
+    nome: str = Field(
+        title="Nome",
+        description="Nome legível da obra.",
+    )
+    tipo_obra: Optional[str] = Field(
+        default=None,
+        title="Tipo da obra",
+        description="Tipo da obra, ex.: casa, apartamento, reforma.",
+    )
+    area_m2: Optional[float] = Field(
+        default=None,
+        title="Área construída",
+        description="Área construída em m².",
+        ge=0,
+    )
+    metodo_construtivo: Optional[str] = Field(
+        default=None,
+        title="Método construtivo",
+        description="Método construtivo da obra.",
+    )
+    regiao: Optional[str] = Field(
+        default=None,
+        title="Região",
+        description="Região do projeto, ex.: sudeste.",
+    )
+    cliente: Optional[str] = Field(
+        default=None,
+        title="Cliente",
+        description="Cliente ou incorporadora.",
+    )
+    ativo: int = Field(
+        default=1,
+        title="Ativo",
+        description="1 = ativo; 0 = inativo.",
+    )
+    total_nos: int = Field(
+        default=0,
+        title="Total de nós",
+        description="Quantidade de nós da EAP deste projeto.",
+        ge=0,
+    )
+    created_at: Optional[str] = Field(
+        default=None,
+        title="Criado em",
+        description="Data de criação (ISO).",
+    )
+    updated_at: Optional[str] = Field(
+        default=None,
+        title="Atualizado em",
+        description="Data da última atualização (ISO).",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+

@@ -7,6 +7,7 @@ cálculo do nível e a validação de integridade da árvore vivem aqui.
 
 Tabelas:
   - eap_node: nós da EAP (fiel ao sistema ARES + project_id, timestamps)
+  - eap_project: metadados de projetos/obras (nome, tipo_obra, área, método, região, cliente)
   - eap_template_real: 100+ exemplos reais de EAP por tipo de obra
   - eap_idempotency: controle de idempotência (request_id → resposta)
 
@@ -46,6 +47,20 @@ CREATE TABLE IF NOT EXISTS eap_node (
 CREATE INDEX IF NOT EXISTS ix_eap_node_parent      ON eap_node(parent_id);
 CREATE INDEX IF NOT EXISTS ix_eap_node_tipo_frente ON eap_node(tipo_frente);
 CREATE INDEX IF NOT EXISTS ix_eap_node_project     ON eap_node(project_id);
+
+CREATE TABLE IF NOT EXISTS eap_project (
+    project_id          TEXT PRIMARY KEY,
+    nome                TEXT NOT NULL,
+    tipo_obra           TEXT,
+    area_m2             REAL,
+    metodo_construtivo  TEXT,
+    regiao              TEXT,
+    cliente             TEXT,
+    ativo               INTEGER NOT NULL DEFAULT 1,
+    created_at          TEXT DEFAULT (datetime('now')),
+    updated_at          TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_eap_project_tipo ON eap_project(tipo_obra);
 
 CREATE TABLE IF NOT EXISTS eap_template_real (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -272,6 +287,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         conn.commit()
     _migrar_eap_node_para_multiprojeto()
+    _migrar_registrar_projetos()
 
 
 def _migrar_eap_node_para_multiprojeto() -> None:
@@ -431,21 +447,145 @@ def limpar_idempotencia_antiga(horas: int = 24) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_PROJETO_CAMPOS = (
+    "project_id, nome, tipo_obra, area_m2, metodo_construtivo, regiao, "
+    "cliente, ativo, created_at, updated_at"
+)
+
+
+def _garantir_projeto(project_id: str, nome: str | None = None) -> None:
+    """Garante a linha de metadados do projeto (cria se ainda não existir)."""
+    pid = (project_id or "").strip() or DEFAULT_PROJECT_ID
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO eap_project (project_id, nome) VALUES (?, ?)",
+            (pid, nome or pid),
+        )
+        conn.commit()
+
+
+def _migrar_registrar_projetos() -> None:
+    """Registra no ``eap_project`` todos os ``project_id`` já existentes em
+    ``eap_node`` (bancos legados / seeds antigos). Idempotente."""
+    try:
+        with _connect() as conn:
+            cursor = conn.execute("SELECT DISTINCT project_id FROM eap_node")
+            for r in cursor.fetchall():
+                conn.execute(
+                    "INSERT OR IGNORE INTO eap_project (project_id, nome) VALUES (?, ?)",
+                    (r["project_id"], r["project_id"]),
+                )
+            conn.commit()
+    except Exception:
+        # Banco recém-criado / tabela ainda indisponível: nada a registrar.
+        pass
+
+
+def buscar_projeto(project_id: str) -> dict[str, Any] | None:
+    """Retorna os metadados de um projeto, ou None se não existir."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            f"SELECT {_PROJETO_CAMPOS} FROM eap_project WHERE project_id = ?",
+            (project_id,),
+        )
+    return _to_dict(cursor.fetchone())
+
+
+def criar_projeto(
+    project_id: str,
+    nome: str | None = None,
+    tipo_obra: str | None = None,
+    area_m2: float | None = None,
+    metodo_construtivo: str | None = None,
+    regiao: str | None = None,
+    cliente: str | None = None,
+) -> dict[str, Any]:
+    """Cria os metadados de um novo projeto (obra). Erro se já existir."""
+    pid = (project_id or "").strip()
+    if not pid:
+        raise ValueError("project_id é obrigatório e não pode ser vazio.")
+    if buscar_projeto(pid) is not None:
+        raise ValueError(f"Projeto '{pid}' já existe.")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO eap_project (
+                project_id, nome, tipo_obra, area_m2, metodo_construtivo,
+                regiao, cliente
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (pid, nome or pid, tipo_obra, area_m2, metodo_construtivo, regiao, cliente),
+        )
+        conn.commit()
+    return buscar_projeto(pid)  # type: ignore[return-value]
+
+
+def atualizar_projeto(project_id: str, **campos: Any) -> dict[str, Any]:
+    """Atualiza campos opcionais dos metadados de um projeto existente."""
+    permitidos = {
+        "nome", "tipo_obra", "area_m2", "metodo_construtivo",
+        "regiao", "cliente", "ativo",
+    }
+    dados = {k: v for k, v in campos.items() if k in permitidos and v is not None}
+    if not dados:
+        raise ValueError("Nenhum campo válido para atualizar o projeto.")
+    if buscar_projeto(project_id) is None:
+        raise ValueError(f"Projeto '{project_id}' não existe.")
+    pares = ", ".join(f"{c} = ?" for c in dados)
+    valores = [*dados.values(), project_id]
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE eap_project SET {pares}, updated_at = datetime('now') "
+            "WHERE project_id = ?",
+            tuple(valores),
+        )
+        conn.commit()
+    return buscar_projeto(project_id)  # type: ignore[return-value]
+
+
+def listar_projetos() -> list[dict[str, Any]]:
+    """Lista todos os projetos com metadados e a contagem de nós (0 se vazio)."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            """
+            SELECT p.project_id, p.nome, p.tipo_obra, p.area_m2,
+                   p.metodo_construtivo, p.regiao, p.cliente, p.ativo,
+                   p.created_at, p.updated_at,
+                   COUNT(n.project_id) AS total_nos
+            FROM eap_project p
+            LEFT JOIN eap_node n ON n.project_id = p.project_id
+            GROUP BY p.project_id
+            ORDER BY p.project_id
+            """
+        )
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+
+
+def deletar_projeto(project_id: str) -> dict[str, Any]:
+    """Deleta todos os nós e os metadados de um projeto."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            "SELECT COUNT(*) AS n FROM eap_node WHERE project_id = ?",
+            (project_id,),
+        )
+        row = cursor.fetchone()
+        total = row["n"] if row else 0
+        conn.execute("DELETE FROM eap_node WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM eap_project WHERE project_id = ?", (project_id,))
+        conn.commit()
+    return {"deletado": True, "project_id": project_id, "total_nos": total}
+
+
 def buscar_por_eap_id(
     eap_id: str, project_id: str | None = None
 ) -> dict[str, Any] | None:
-    """Retorna um nó pelo EAP_ID (dentro do projeto), ou None se não existir."""
-    if project_id is None:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE eap_id = ?", (eap_id,)
-            )
-    else:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE eap_id = ? AND project_id = ?",
-                (eap_id, project_id),
-            )
+    """Retorna um nó pelo EAP_ID dentro do projeto. Sem projeto, usa o default."""
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    with _connect() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM eap_node WHERE eap_id = ? AND project_id = ?",
+            (eap_id, pid),
+        )
     row = cursor.fetchone()
     if row is None:
         return None
@@ -455,19 +595,16 @@ def buscar_por_eap_id(
 def listar_filhos(
     parent_id: str, project_id: str | None = None
 ) -> list[dict[str, Any]]:
-    """Retorna os filhos diretos de um nó, ordenados pelo código hierárquico."""
-    if project_id is None:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE parent_id = ?",
-                (parent_id,),
-            )
-    else:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE parent_id = ? AND project_id = ?",
-                (parent_id, project_id),
-            )
+    """Retorna os filhos diretos de um nó, ordenados pelo código hierárquico.
+
+    Sem ``project_id`` explícito, assume o projeto default (nunca mistura
+    projetos na consulta de subárvore)."""
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    with _connect() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM eap_node WHERE parent_id = ? AND project_id = ?",
+            (parent_id, pid),
+        )
     rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
     rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
     return rows
@@ -523,6 +660,7 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
     unidade = normalizar_unidade(dados.get("unidade"))
     quantidade = dados.get("quantidade")
     project_id = dados.get("project_id", DEFAULT_PROJECT_ID)
+    _garantir_projeto(project_id)
     tipo_frente = normalizar_tipo_frente(dados.get("tipo_frente"))
 
     # Validação referencial: mãe precisa existir no mesmo projeto.
@@ -614,9 +752,7 @@ def deletar_nodo(
 ) -> dict[str, Any]:
     """Deleta um nó. Se cascade=True, deleta todos os descendentes."""
     if project_id is None:
-        project_id = (
-            buscar_por_eap_id(eap_id) or {}
-        ).get("project_id", DEFAULT_PROJECT_ID)
+        project_id = DEFAULT_PROJECT_ID
     existente = buscar_por_eap_id(eap_id, project_id)
     if existente is None:
         raise ValueError(f"EAP_ID '{eap_id}' não encontrado no projeto '{project_id}'")
@@ -641,51 +777,25 @@ def deletar_nodo(
     return {"deletado": True, "eap_id": eap_id, "project_id": project_id}
 
 
-def deletar_projeto(project_id: str) -> dict[str, Any]:
-    """Deleta todos os nós de um projeto."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            "SELECT COUNT(*) AS n FROM eap_node WHERE project_id = ?",
-            (project_id,),
-        )
-        row = cursor.fetchone()
-        total = row["n"] if row else 0
-        conn.execute("DELETE FROM eap_node WHERE project_id = ?", (project_id,))
-        conn.commit()
-    return {"deletado": True, "project_id": project_id, "total_nos": total}
 
 
-def listar_projetos() -> list[dict[str, Any]]:
-    """Lista todos os projetos com contagem de nós."""
-    with _connect() as conn:
-        cursor = conn.execute(
-            """
-            SELECT project_id, COUNT(*) AS total_nos, MIN(created_at) AS criado_em
-            FROM eap_node
-            GROUP BY project_id
-            ORDER BY project_id
-            """
-        )
-    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+
+
 
 
 def listar_por_tipo_frente(
     tipo_frente: str,
     project_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Retorna todos os nós que pertencem a um tipo de frente de serviço."""
-    if project_id:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE tipo_frente = ? AND project_id = ?",
-                (tipo_frente, project_id),
-            )
-    else:
-        with _connect() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM eap_node WHERE tipo_frente = ?",
-                (tipo_frente,),
-            )
+    """Retorna todos os nós que pertencem a um tipo de frente de serviço.
+
+    Sem ``project_id`` explícito, assume o projeto default."""
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    with _connect() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM eap_node WHERE tipo_frente = ? AND project_id = ?",
+            (tipo_frente, pid),
+        )
     rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
     rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
     return rows
@@ -933,6 +1043,8 @@ def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
       * quantidade em nó não-folha (dupla contagem de quantitativos);
       * tipo_frente do filho divergente do pai nos níveis >= 2 (coerência).
     """
+    if project_id is None:
+        project_id = DEFAULT_PROJECT_ID
     problemas: list[str] = []
     todos = listar_todos(project_id)
 

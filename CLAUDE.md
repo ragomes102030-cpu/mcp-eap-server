@@ -24,11 +24,17 @@ SQLite local com fallback para **Turso/libSQL** em produção.
 **Camadas rígidas**: `server.py` (apresentação MCP) nunca toca SQL direto;
 `models.py` (dados) nunca importa `mcp`/`schemas`. Mantenha essa separação.
 
-## Ferramentas expostas (11)
+## Ferramentas expostas (13)
 
+- **Projetos (obras)**: `criar_projeto`, `atualizar_projeto`, `listar_projetos`, `deletar_projeto`
 - **Estrutura**: `criar_eap_node`, `get_eap_tree`, `get_eap_node`, `validar_estrutura`
-- **Manutenção**: `atualizar_eap_node`, `deletar_eap_node`, `mover_eap_node`, `listar_projetos`, `deletar_projeto`
+- **Manutenção**: `atualizar_eap_node`, `deletar_eap_node`, `mover_eap_node`
 - **Consulta**: `listar_por_tipo_frente`, `listar_templates`
+
+**Projeto = obra**: toda tool de nó aceita `project_id` opcional (padrão
+`default`). Operações são **escopadas ao projeto** (isolamento total entre
+obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
+(nome, tipo_obra, área, método, região, cliente) vivem na tabela `eap_project`.
 
 ## Regras de integridade (NÃO violar)
 
