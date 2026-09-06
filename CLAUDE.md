@@ -77,6 +77,10 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
 - Após mudanças, sempre `python -m py_compile models.py schemas.py server.py`.
 - Cobertura mínima sugerida: criar→atualizar→get→deletar→validar + idempotência +
   migração.
+- **Testes versionados**: `python -m pytest` roda a suíte (`tests/`): unit da
+  camada de dados (gate de cobertura 70% em `models.py`) + 3 baterias
+  funcionais (servidor isolado). O CI (`.github/workflows/ci.yml`) executa
+  ruff (F/E9), py_compile, unit+cov e as baterias a cada push/PR.
 
 ## Escopo (Fase 1 vs Fase 2) — NÃO misturar
 

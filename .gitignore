@@ -41,3 +41,14 @@ config.local.py
 dist/
 build/
 *.egg-info/
+
+# Cobertura e cache do pytest
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Artefatos gerados pelas baterias em execucao (resultados/logs)
+_teste_*.txt
+_teste_*_run.log
+
