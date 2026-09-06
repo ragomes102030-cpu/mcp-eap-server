@@ -11,3 +11,6 @@ pydantic==2.13.5
 uvicorn==0.52.4
 starlette==1.6.0
 
+# Cliente SQLite remoto (Turso/libSQL) — fallback pro sqlite3 local quando
+# TURSO_URL não está configurada
+libsql-client==0.3.1

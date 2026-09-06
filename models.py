@@ -1,9 +1,9 @@
-"""Camada de dados SQLite para a EAP (Work Breakdown Structure) de obras.
+"""Camada de dados SQLite/libSQL para a EAP (Work Breakdown Structure) de obras.
 
-Usa ``sqlite3`` puro (stdlib), propositalmente sem ORM, para manter o servidor
-MCP leve e sem dependências adicionais. Toda a lógica de acesso a dados, a
-geração dos códigos hierárquicos (``EAP_ID`` no formato "1.2.3"), o cálculo do
-nível e a validação de integridade da árvore vivem aqui.
+Usa ``libsql_client`` (Turso) em produção quando ``TURSO_URL`` está configurada,
+com fallback pro ``sqlite3`` local para desenvolvimento. Toda a lógica de acesso
+a dados, a geração dos códigos hierárquicos (``EAP_ID`` no formato "1.2.3"), o
+cálculo do nível e a validação de integridade da árvore vivem aqui.
 
 Tabela ``eap_node`` (fiel ao sistema ARES):
 
@@ -20,6 +20,7 @@ Tabela ``eap_node`` (fiel ao sistema ARES):
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -43,9 +44,61 @@ CREATE INDEX IF NOT EXISTS ix_eap_node_parent      ON eap_node(parent_id);
 CREATE INDEX IF NOT EXISTS ix_eap_node_tipo_frente ON eap_node(tipo_frente);
 """
 
+_TURSO_URL = os.environ.get("TURSO_URL", "")
+_TURSO_TOKEN = os.environ.get("TURSO_TOKEN", "")
 
-def _connect() -> sqlite3.Connection:
-    """Abre uma conexão com FK habilitada e linhas como dicionários."""
+
+class _TursoConn:
+    """Wrapper que emula a API sqlite3 usando libsql_client (Turso)."""
+
+    def __init__(self) -> None:
+        import libsql_client
+
+        self._client = libsql_client.create_client(
+            url=_TURSO_URL, auth_token=_TURSO_TOKEN
+        )
+
+    def execute(self, sql: str, params: tuple = ()) -> "_TursoCursor":
+        converted = sql
+        for i, _ in enumerate(params, start=1):
+            converted = converted.replace("?", f":{i}", 1)
+        result = self._client.execute(converted, list(params))
+        return _TursoCursor(result)
+
+    def executescript(self, script: str) -> None:
+        for stmt in script.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                self.execute(stmt)
+
+    def commit(self) -> None:
+        pass
+
+    def __enter__(self) -> "_TursoConn":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        pass
+
+
+class _TursoCursor:
+    """Wrapper de resultado que emula .fetchone() / .fetchall() do sqlite3."""
+
+    def __init__(self, result: Any) -> None:
+        self._rows = [dict(zip(result.columns, row)) for row in result.rows]
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return self._rows
+
+
+def _connect() -> "_TursoConn | sqlite3.Connection":
+    """Abre conexão: Turso (se configurado) ou sqlite3 local."""
+    if _TURSO_URL:
+        return _TursoConn()
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -53,7 +106,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Cria o arquivo e a tabela caso ainda não existam."""
+    """Cria a tabela caso ainda não exista."""
     with _connect() as conn:
         conn.executescript(SCHEMA)
         conn.commit()
@@ -67,27 +120,30 @@ def init_db() -> None:
 def buscar_por_eap_id(eap_id: str) -> dict[str, Any] | None:
     """Retorna um nó pelo EAP_ID, ou None se não existir."""
     with _connect() as conn:
-        row = conn.execute(
+        cursor = conn.execute(
             "SELECT * FROM eap_node WHERE eap_id = ?", (eap_id,)
-        ).fetchone()
-    return dict(row) if row is not None else None
+        )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return dict(row) if not isinstance(row, dict) else row
 
 
 def listar_filhos(parent_id: str) -> list[dict[str, Any]]:
     """Retorna os filhos diretos de um nó, ordenados pelo código."""
     with _connect() as conn:
-        rows = conn.execute(
+        cursor = conn.execute(
             "SELECT * FROM eap_node WHERE parent_id = ? ORDER BY eap_id",
             (parent_id,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
 def listar_todos() -> list[dict[str, Any]]:
     """Retorna todos os nós, ordenados por código hierárquico."""
     with _connect() as conn:
-        rows = conn.execute("SELECT * FROM eap_node ORDER BY eap_id").fetchall()
-    return [dict(r) for r in rows]
+        cursor = conn.execute("SELECT * FROM eap_node ORDER BY eap_id")
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
 def _ultimo_segmento(eap_id: str) -> int:
@@ -101,16 +157,11 @@ def _ultimo_segmento(eap_id: str) -> int:
 def proximo_eap_id(parent_id: str | None) -> str:
     """Gera o próximo EAP_ID hierárquico."""
     if parent_id is None:
-        with _connect() as conn:
-            rows = conn.execute("SELECT eap_id FROM eap_node").fetchall()
-        seq = max((_ultimo_segmento(r["eap_id"]) for r in rows), default=0) + 1
+        seq = max((_ultimo_segmento(n["eap_id"]) for n in listar_todos()), default=0) + 1
         return str(seq)
 
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS n FROM eap_node WHERE parent_id = ?", (parent_id,)
-        ).fetchone()
-    proximo_irmao = (row["n"] if row else 0) + 1
+    irmaos = listar_filhos(parent_id)
+    proximo_irmao = len(irmaos) + 1
     return f"{parent_id}.{proximo_irmao}"
 
 
@@ -143,11 +194,11 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
 def listar_por_tipo_frente(tipo_frente: str) -> list[dict[str, Any]]:
     """Retorna todos os nós que pertencem a um tipo de frente de serviço."""
     with _connect() as conn:
-        rows = conn.execute(
+        cursor = conn.execute(
             "SELECT * FROM eap_node WHERE tipo_frente = ? ORDER BY eap_id",
             (tipo_frente,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,10 +209,10 @@ def listar_por_tipo_frente(tipo_frente: str) -> list[dict[str, Any]]:
 def _raizes() -> list[dict[str, Any]]:
     """Todos os nós sem pai (raízes da EAP)."""
     with _connect() as conn:
-        rows = conn.execute(
+        cursor = conn.execute(
             "SELECT * FROM eap_node WHERE parent_id IS NULL ORDER BY eap_id"
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
 def montar_arvore(eap_id: str | None = None) -> list[dict[str, Any]]:
