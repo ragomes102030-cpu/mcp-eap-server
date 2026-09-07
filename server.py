@@ -233,17 +233,38 @@ def criar_eap_node(
 
 @mcp.tool()
 def get_eap_node(
-    eap_id: Annotated[str, Field(description="Código hierárquico do nó, ex.: '1.2.3'.", examples=["1.2.3"])],
+    eap_id: Annotated[str | None, Field(description="EAP_ID (código display) do nó, ex.: '1.2.3'.", examples=["1.2.3"])] = None,
+    uid: Annotated[str | None, Field(description="UID estável do nó (referência imutável; não muda em movimentações).", examples=["9f2c..."])] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
-    """Retorna os dados de um nó específico da EAP."""
+    """Retorna um nó por ``uid`` OU por ``eap_id``.
+
+    Prefira ``uid`` (estável). Se o ``eap_id`` informado não existir mais,
+    consulta o histórico de movimentação e devolve o nó atual com
+    ``movido_de``/``movido_para``.
+    """
 
     def _executar() -> dict[str, Any]:
         pid = project_id or models.DEFAULT_PROJECT_ID
+        if uid:
+            node = models.buscar_por_uid(uid, pid)
+            if node is None:
+                return schemas.ErroOutput(erro=f"Nó UID '{uid}' não encontrado.").model_dump()
+            return schemas.EAPNodeOutput.model_validate(node).model_dump()
+        if not eap_id:
+            return schemas.ErroOutput(erro="Informe 'uid' ou 'eap_id'.").model_dump()
         node = models.buscar_por_eap_id(eap_id, pid)
-        if node is None:
-            return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
-        return schemas.EAPNodeOutput.model_validate(node).model_dump()
+        if node is not None:
+            return schemas.EAPNodeOutput.model_validate(node).model_dump()
+        hist = models.historico_movimentos(project_id=pid, eap_id_de=eap_id)
+        if hist:
+            atual = models.buscar_por_uid(hist[0]["uid"], pid)
+            if atual is not None:
+                saida = schemas.EAPNodeOutput.model_validate(atual).model_dump()
+                saida["movido_de"] = eap_id
+                saida["movido_para"] = atual["eap_id"]
+                return saida
+        return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
 
     return _seguro(_executar)
 
@@ -370,24 +391,27 @@ def deletar_eap_node(
 def move_eap_node(
     eap_id: Annotated[str, Field(description="Codigo hierarquico do no a mover, ex.: '1.2'.", examples=["1.2"])],
     novo_parent_id: Annotated[str | None, Field(description="EAP_ID do novo pai. Nulo/omitido = mover para a raiz (vira no de topo).", examples=["2.1", None])] = None,
+    motivo: Annotated[str | None, Field(description="Motivo da movimentacao (registrado em eap_id_history).", examples=["reorganizacao de frentes"])] = None,
     request_id: Annotated[str | None, Field(description="Idempotencia: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
     """Move um no (e toda a sua subarvore) para um novo pai.
 
-    Renumera o EAP_ID e o NIVEL do no e de todos os descendentes preservando a
-    estrutura relativa (ex.: mover '1.2' para sob '2.1' o transforma em '2.1.x'
-    com NIVEL recalibrado). Rejeita movimentos que criariam ciclo (destino
-    dentro da propria subarvore do no movido).
+    O ``uid`` de cada no e ESTAVEL (referencia externa imutavel): apenas o
+    ``EAP_ID``/``NIVEL`` (display) sao re-renumerados, e o movimento fica
+    registrado em ``eap_id_history`` (auditoria: get_eap_node por eap_id antigo
+    devolve o no atual com movido_de/movido_para). Rejeita movimentos que
+    criariam ciclo (destino dentro da propria subarvore do no movido).
     """
 
     def _executar() -> dict[str, Any]:
         pid = project_id or models.DEFAULT_PROJECT_ID
-        return models.mover_nodo(eap_id, novo_parent_id, pid)
+        return models.mover_nodo(eap_id, novo_parent_id, pid, motivo)
 
     return _idempotente(
         request_id, "move_eap_node",
-        {"eap_id": eap_id, "novo_parent_id": novo_parent_id}, _executar,
+        {"eap_id": eap_id, "novo_parent_id": novo_parent_id, "motivo": motivo,
+         "project_id": project_id}, _executar,
     )
 
 

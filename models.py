@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -30,6 +31,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS eap_node (
     project_id   TEXT NOT NULL,
     eap_id       TEXT NOT NULL,
+    uid          TEXT,
     parent_id    TEXT,
     nivel        INTEGER NOT NULL,
     frente_id    TEXT,
@@ -89,6 +91,18 @@ CREATE TABLE IF NOT EXISTS eap_idempotency (
     response        TEXT NOT NULL,
     created_at      TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS eap_id_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid         TEXT NOT NULL,
+    project_id  TEXT NOT NULL,
+    eap_id_de   TEXT NOT NULL,
+    eap_id_para TEXT,
+    motivo      TEXT,
+    em          TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_history_uid ON eap_id_history(uid);
+CREATE INDEX IF NOT EXISTS ix_history_de  ON eap_id_history(eap_id_de);
 """
 
 UNIDADES_VALIDAS = {"m²", "m³", "ml", "un", "kg", "conj", "vb", "pt"}
@@ -288,6 +302,7 @@ def init_db() -> None:
         conn.commit()
     _migrar_eap_node_para_multiprojeto()
     _migrar_registrar_projetos()
+    _migrar_uid()
 
 
 def _migrar_eap_node_para_multiprojeto() -> None:
@@ -576,6 +591,86 @@ def deletar_projeto(project_id: str) -> dict[str, Any]:
     return {"deletado": True, "project_id": project_id, "total_nos": total}
 
 
+def _gerar_uid() -> str:
+    """Gera um uid estável (uuid4 hex) — referência externa imutável do nó."""
+    return uuid.uuid4().hex
+
+
+def buscar_por_uid(uid: str, project_id: str | None = None) -> dict[str, Any] | None:
+    """Retorna um nó pelo ``uid`` estável. Sem projeto, assume o default."""
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    if not uid:
+        return None
+    with _connect() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM eap_node WHERE uid = ? AND project_id = ?",
+            (uid, pid),
+        )
+    return _to_dict(cursor.fetchone())
+
+
+def historico_movimentos(
+    project_id: str | None = None,
+    uid: str | None = None,
+    eap_id_de: str | None = None,
+    limite: int = 500,
+) -> list[dict[str, Any]]:
+    """Histórico de renumeracão (EAP_ID display) de nós movidos.
+
+    ``uid`` é estável; ``eap_id`` é display e muda a cada ``move``. A tabela
+    permite resolver ``eap_id`` antigo -> nó atual (auditoria / movido_para).
+    """
+    where: list[str] = []
+    params: list[Any] = []
+    if project_id:
+        where.append("project_id = ?")
+        params.append(project_id)
+    if uid:
+        where.append("uid = ?")
+        params.append(uid)
+    if eap_id_de:
+        where.append("eap_id_de = ?")
+        params.append(eap_id_de)
+    sql = "SELECT * FROM eap_id_history"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(int(limite))
+    with _connect() as conn:
+        cursor = conn.execute(sql, tuple(params))
+    return _to_list(cursor.fetchall())
+
+
+def _migrar_uid() -> None:
+    """Garante a coluna ``uid`` em ``eap_node`` e preenche nulos (idempotente).
+
+    Bancos antigos (pré-uid) ganham uid estável por nó; a partir daí o ``uid``
+    nunca muda — ``eap_id`` vira display e ``move`` grava ``eap_id_history``.
+    """
+    try:
+        with _connect() as conn:
+            conn.execute("ALTER TABLE eap_node ADD COLUMN uid TEXT")
+            conn.commit()
+    except Exception:
+        pass  # coluna já existe
+    pendentes = [n for n in listar_todos() if not n.get("uid")]
+    for n in pendentes:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE eap_node SET uid = ? WHERE project_id = ? AND eap_id = ?",
+                (_gerar_uid(), n["project_id"], n["eap_id"]),
+            )
+            conn.commit()
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_eap_node_uid ON eap_node(uid)"
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
 def buscar_por_eap_id(
     eap_id: str, project_id: str | None = None
 ) -> dict[str, Any] | None:
@@ -657,6 +752,7 @@ def proximo_eap_id(parent_id: str | None, project_id: str = DEFAULT_PROJECT_ID) 
 
 def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
     """Insere um nó e devolve o registro completo persistido."""
+    uid = dados.get("uid") or _gerar_uid()
     unidade = normalizar_unidade(dados.get("unidade"))
     quantidade = dados.get("quantidade")
     project_id = dados.get("project_id", DEFAULT_PROJECT_ID)
@@ -677,11 +773,12 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
         conn.execute(
             """
             INSERT INTO eap_node (
-                eap_id, parent_id, nivel, project_id, frente_id, local_id,
+                uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
                 tipo_frente, nome, unidade, quantidade, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                uid,
                 dados["eap_id"],
                 dados.get("parent_id"),
                 dados["nivel"],
@@ -861,11 +958,13 @@ def mover_nodo(
     eap_id: str,
     novo_parent_id: str | None,
     project_id: str = DEFAULT_PROJECT_ID,
+    motivo: str | None = None,
 ) -> dict[str, Any]:
     """Move um nó (e sua subárvore) para um novo pai.
 
-    Redimensiona ``EAP_ID``/``NIVEL`` dos descendentes preservando a estrutura
-    relativa. Bloqueia movimento que criaria ciclo.
+    ``uid`` é estável e **nunca muda**: apenas ``EAP_ID``/``NIVEL`` são
+    recalculados (display). Cada nó movido ganha um registro em
+    ``eap_id_history`` (de/para/motivo). Bloqueia movimento que criaria ciclo.
     """
     no = buscar_por_eap_id(eap_id, project_id)
     if no is None:
@@ -887,7 +986,7 @@ def mover_nodo(
             )
 
     sub = _coletar_subarvore(eap_id, project_id)
-    return _executar_move(sub, eap_id, novo_parent_id, project_id)
+    return _executar_move(sub, eap_id, novo_parent_id, project_id, motivo)
 
 
 def _subarvore_ids(eap_id: str, project_id: str) -> list[str]:
@@ -936,8 +1035,13 @@ def _executar_move(
     eap_id: str,
     novo_parent_id: str | None,
     project_id: str,
+    motivo: str | None = None,
 ) -> dict[str, Any]:
-    """Reinsere a subárvore re-numerada sob o novo pai, atomicamente."""
+    """Reinsere a subárvore re-numerada sob o novo pai, atomicamente.
+
+    Preserva o ``uid`` de cada nó (referência estável) e grava ``eap_id_history``
+    com o mapeamento de/para de cada nó movido (auditoria de renumeração).
+    """
     raiz_antigo = eap_id
 
     # Novo código e nível da raiz movida.
@@ -989,7 +1093,7 @@ def _executar_move(
             antigo_pai = n["parent_id"]
             novo_pai_map[cod] = novo_id.get(antigo_pai)
 
-    # Persistência atômica (deletar antigos + reinserir novos).
+    # Persistência atômica (deletar antigos + reinserir novos + histórico).
     with _connect() as conn:
         conn.execute(
             "DELETE FROM eap_node WHERE project_id = ? AND eap_id IN ({0})".format(
@@ -1000,14 +1104,16 @@ def _executar_move(
         for n in sub:
             antigo = n["eap_id"]
             dados = n["dados"]
+            uid_no = dados.get("uid") or _gerar_uid()
             conn.execute(
                 """
                 INSERT INTO eap_node (
-                    eap_id, parent_id, nivel, project_id, frente_id, local_id,
+                    uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
                     tipo_frente, nome, unidade, quantidade, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    uid_no,
                     novo_id[antigo],
                     novo_pai_map[novo_id[antigo]],
                     nivel_novo[antigo],
@@ -1021,6 +1127,12 @@ def _executar_move(
                     dados.get("created_at") or _agora_iso(),
                     _agora_iso(),
                 ),
+            )
+            conn.execute(
+                "INSERT INTO eap_id_history "
+                "(uid, project_id, eap_id_de, eap_id_para, motivo) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (uid_no, project_id, antigo, novo_id[antigo], motivo),
             )
         conn.commit()
 

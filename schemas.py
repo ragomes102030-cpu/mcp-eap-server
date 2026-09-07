@@ -125,6 +125,11 @@ class EAPNodeOutput(BaseModel):
     """Representação de um nó da EAP (sem a subárvore)."""
 
     eap_id: str = Field(title="EAP_ID", description="Código hierárquico gerado.")
+    uid: Optional[str] = Field(
+        default=None,
+        title="UID",
+        description="Referência estável e imutável do nó (não muda em movimentações).",
+    )
     parent_id: Optional[str] = Field(
         title="EAP_ID do pai", description="Nulo quando o nó é raiz."
     )

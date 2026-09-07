@@ -17,6 +17,7 @@ BATERIAS = [
     "_teste_planejamento.py",   # visao engenheiro de planejamento (26 casos)
     "_teste_multiprojeto.py",   # Fase A: multi-obra (32 casos)
     "_teste_semantica.py",      # Fase B: avisos semanticos (9 casos)
+    "_teste_f11.py",            # F1.1: uid estavel + eap_id_history (8 casos)
 ]
 
 
