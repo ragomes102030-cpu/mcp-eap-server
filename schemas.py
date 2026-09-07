@@ -66,6 +66,16 @@ class CriarEAPNodeInput(BaseModel):
         description="Quantidade planejada do item (>= 0).",
         examples=[120.5],
     )
+    nao_aplicavel: Optional[bool] = Field(
+        default=None,
+        title="Não aplicável",
+        description="True = pacote N/A (verba/provisório); folha sem quantidade vira aviso FANTASMA a menos que N/A.",
+    )
+    motivo_na: Optional[str] = Field(
+        default=None,
+        title="Motivo N/A",
+        description="Justificativa do N/A (ex.: provisório, verba).",
+    )
 
     @field_validator("nome")
     @classmethod
@@ -149,6 +159,16 @@ class EAPNodeOutput(BaseModel):
         default=None,
         title="Disciplina",
         description="Disciplina técnica (civil, elétrica, hidráulica...).",
+    )
+    nao_aplicavel: Optional[int] = Field(
+        default=None,
+        title="Não aplicável",
+        description="1 = pacote N/A (verba/provisório), 0/None = aplicável.",
+    )
+    motivo_na: Optional[str] = Field(
+        default=None,
+        title="Motivo N/A",
+        description="Justificativa quando nao_aplicavel=1 (ex.: provisório, verba).",
     )
     parent_id: Optional[str] = Field(
         title="EAP_ID do pai", description="Nulo quando o nó é raiz."

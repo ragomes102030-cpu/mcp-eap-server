@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS eap_node (
     criterio_medicao TEXT,
     responsavel  TEXT,
     disciplina   TEXT,
+    nao_aplicavel INTEGER,
+    motivo_na    TEXT,
     created_at   TEXT DEFAULT (datetime('now')),
     updated_at   TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (project_id, eap_id),
@@ -216,6 +218,55 @@ def _normalizar_turso_url(url: str) -> str:
 
 def _agora_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _flag(v: Any) -> Any:
+    """Converte True/False em 1/0 (mantém None)."""
+    if v is None:
+        return None
+    return 1 if v else 0
+
+
+_STOPWORDS_FRASE = {"de", "da", "do", "das", "dos", "e"}
+
+
+def _palavra_frase(palavra: str) -> str:
+    """Capitaliza 'Frase' preservando siglas/numeros compostos (CA-50, BLOCO-A)."""
+    if not palavra:
+        return palavra
+    if re.search(r"[0-9]|[-/]", palavra) and re.fullmatch(
+            r"[A-Z0-9]+(?:[-/][A-Z0-9]+)*", palavra):
+        return palavra
+    if palavra.lower() in _STOPWORDS_FRASE:
+        return palavra.lower()
+    return palavra.capitalize()
+
+
+def normalizar_nome_frase(nome: str | None) -> str | None:
+    """Converte nome em CAIXA ALTA para Capitalização de Frase (F1.4).
+
+    Ex.: 'ESCAVAÇÃO SAPATAS' -> 'Escavação Sapatas'; 'AÇO CA-50' mantém 'CA-50'.
+    """
+    if not nome:
+        return nome
+    return " ".join(_palavra_frase(p) for p in nome.strip().split())
+
+
+def normalizar_nomes_projeto(project_id: str | None = None) -> int:
+    """Normaliza nomes CAIXA ALTA de um projeto (uid preservado). Retorna qtd."""
+    alterados = 0
+    for n in listar_todos(project_id):
+        nome = n.get("nome") or ""
+        if nome.isupper() and any(c.isalpha() for c in nome):
+            novo = normalizar_nome_frase(nome)
+            if novo != nome:
+                atualizar_nodo(
+                    n["eap_id"],
+                    {"project_id": project_id or n.get("project_id", DEFAULT_PROJECT_ID),
+                     "nome": novo},
+                )
+                alterados += 1
+    return alterados
 
 
 def normalizar_unidade(unidade: str | None) -> str | None:
@@ -714,14 +765,22 @@ def _migrar_uid() -> None:
 
 
 _COLUNAS_F13 = ("descricao", "criterio_medicao", "responsavel", "disciplina")
+_COLUNAS_F14 = (("nao_aplicavel", "INTEGER"), ("motivo_na", "TEXT"))
 
 
 def _migrar_colunas_texto() -> None:
-    """Garante as colunas de dicionario/dono (F1.3) em ``eap_node`` (idempotente)."""
+    """Garante colunas de dicionario/dono (F1.3) e N/A (F1.4) em ``eap_node``."""
     for col in _COLUNAS_F13:
         try:
             with _connect() as conn:
                 conn.execute(f"ALTER TABLE eap_node ADD COLUMN {col} TEXT")
+                conn.commit()
+        except Exception:
+            pass  # coluna ja existe
+    for col, tipo in _COLUNAS_F14:
+        try:
+            with _connect() as conn:
+                conn.execute(f"ALTER TABLE eap_node ADD COLUMN {col} {tipo}")
                 conn.commit()
         except Exception:
             pass  # coluna ja existe
@@ -847,8 +906,9 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
                 tipo_frente, nome, unidade, quantidade,
                 descricao, criterio_medicao, responsavel, disciplina,
+                nao_aplicavel, motivo_na,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uid,
@@ -866,6 +926,8 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 dados.get("criterio_medicao"),
                 dados.get("responsavel"),
                 dados.get("disciplina"),
+                _flag(dados.get("nao_aplicavel")),
+                dados.get("motivo_na"),
                 _agora_iso(),
                 _agora_iso(),
             ),
@@ -893,10 +955,14 @@ def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
     campos = []
     valores = []
     for campo in ["frente_id", "local_id", "tipo_frente", "nome",
-                  "descricao", "criterio_medicao", "responsavel", "disciplina"]:
+                  "descricao", "criterio_medicao", "responsavel", "disciplina",
+                  "nao_aplicavel", "motivo_na"]:
         if campo in dados:
             campos.append(f"{campo} = ?")
-            valores.append(dados[campo])
+            if campo == "nao_aplicavel":
+                valores.append(_flag(dados[campo]))
+            else:
+                valores.append(dados[campo])
     if unidade is not None:
         campos.append("unidade = ?")
         valores.append(unidade)
@@ -1189,8 +1255,9 @@ def _executar_move(
                     uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
                     tipo_frente, nome, unidade, quantidade,
                     descricao, criterio_medicao, responsavel, disciplina,
+                    nao_aplicavel, motivo_na,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     uid_no,
@@ -1208,6 +1275,8 @@ def _executar_move(
                     dados.get("criterio_medicao"),
                     dados.get("responsavel"),
                     dados.get("disciplina"),
+                    _flag(dados.get("nao_aplicavel")),
+                    dados.get("motivo_na"),
                     dados.get("created_at") or _agora_iso(),
                     _agora_iso(),
                 ),
@@ -1328,6 +1397,11 @@ def validar_estrutura(
         if not filhos and not (nodo.get("responsavel") or "").strip():
             avisos.append(
                 f"SEM_DONO: folha '{nodo['eap_id']}' ('{nome[:40]}') sem responsável."
+            )
+        if not filhos and nodo.get("quantidade") is None and not nodo.get("nao_aplicavel"):
+            avisos.append(
+                f"FANTASMA: folha '{nodo['eap_id']}' ('{nome[:40]}') sem quantidade "
+                "e sem nao_aplicavel."
             )
         for filho in filhos:
             if (nivel == 1 and filho.get("tipo_frente") and nodo.get("tipo_frente")

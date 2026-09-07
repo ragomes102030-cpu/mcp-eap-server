@@ -186,6 +186,8 @@ def criar_eap_node(
     tipo_frente: Annotated[str, Field(description="Tipo de serviço, ex.: fundacao.", examples=["fundacao"])] = "",
     unidade: Annotated[str | None, Field(description="Unidade de medida (m², m³, un...).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Quantidade planejada (>= 0).", ge=0)] = None,
+    nao_aplicavel: Annotated[bool | None, Field(description="True = pacote N/A (verba/provisório); folha sem quantidade e sem N/A gera aviso FANTASMA.")] = None,
+    motivo_na: Annotated[str | None, Field(description="Motivo do N/A (ex.: provisório, verba).")] = None,
     request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
@@ -201,6 +203,7 @@ def criar_eap_node(
         dados = schemas.CriarEAPNodeInput(
             parent_id=parent_id, frente_id=frente_id, local_id=local_id,
             tipo_frente=tipo_frente, nome=nome, unidade=unidade, quantidade=quantidade,
+            nao_aplicavel=nao_aplicavel, motivo_na=motivo_na,
         )
 
         if dados.parent_id is not None:
@@ -221,6 +224,7 @@ def criar_eap_node(
                 "frente_id": dados.frente_id, "local_id": dados.local_id,
                 "tipo_frente": dados.tipo_frente, "nome": dados.nome,
                 "unidade": dados.unidade, "quantidade": dados.quantidade,
+                "nao_aplicavel": dados.nao_aplicavel, "motivo_na": dados.motivo_na,
             }
         )
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
@@ -335,6 +339,8 @@ def atualizar_eap_node(
     tipo_frente: Annotated[str | None, Field(description="Novo tipo de serviço (fundacao, estrutura, alvenaria...).", examples=["fundacao"])] = None,
     unidade: Annotated[str | None, Field(description="Nova unidade (m², m³, ml, un, kg, conj, vb, pt).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Nova quantidade planejada (>= 0); só em nós-folha.", ge=0)] = None,
+    nao_aplicavel: Annotated[bool | None, Field(description="Novo estado N/A (True/False).")] = None,
+    motivo_na: Annotated[str | None, Field(description="Novo motivo do N/A.")] = None,
     request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
 ) -> dict[str, Any]:
@@ -349,6 +355,7 @@ def atualizar_eap_node(
         dados = {k: v for k, v in {
             "nome": nome, "frente_id": frente_id, "local_id": local_id,
             "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
+            "nao_aplicavel": nao_aplicavel, "motivo_na": motivo_na,
         }.items() if v is not None}
         dados["project_id"] = pid
         if not dados:
