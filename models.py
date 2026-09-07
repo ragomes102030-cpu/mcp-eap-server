@@ -212,10 +212,12 @@ _TURSO_TOKEN = os.environ.get("TURSO_TOKEN", "")
 DEFAULT_PROJECT_ID = "default"
 
 # F1.2 - transição para raiz única por obra (projeto = obra).
-# Começa DESLIGADA: validar mantém multi-raiz como aviso. Ligue (env
-# EAP_STRICT_SINGLE_ROOT=1) SOMENTE depois de migrar os projetos para raiz única.
-STRICT_SINGLE_ROOT = os.environ.get("EAP_STRICT_SINGLE_ROOT", "").strip().lower() in {
-    "1", "true", "yes",
+# Fechamento da Fase 1 (2026-09-08): o default da flag INVERTOU. Multi-raiz
+# agora é PROBLEMA (invalida a árvore) por padrão — rigor permanente após a
+# migração de todos os projetos para raiz única. Para diagnosticar dados
+# legados, passe strict_single_root=False explicitamente.
+STRICT_SINGLE_ROOT = os.environ.get("EAP_STRICT_SINGLE_ROOT", "1").strip().lower() not in {
+    "0", "false", "no",
 }
 
 
