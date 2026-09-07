@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS eap_node (
     disciplina   TEXT,
     nao_aplicavel INTEGER,
     motivo_na    TEXT,
+    status       TEXT DEFAULT "ativo",
+    revisao      INTEGER DEFAULT 0,
+    motivo_retrabalho TEXT,
+    origem_uid   TEXT,
     created_at   TEXT DEFAULT (datetime('now')),
     updated_at   TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (project_id, eap_id),
@@ -779,10 +783,14 @@ def _migrar_uid() -> None:
 
 _COLUNAS_F13 = ("descricao", "criterio_medicao", "responsavel", "disciplina")
 _COLUNAS_F14 = (("nao_aplicavel", "INTEGER"), ("motivo_na", "TEXT"))
+_COLUNAS_F16 = (
+    ("status", "TEXT"), ("revisao", "INTEGER"),
+    ("motivo", "TEXT"), ("origem_uid", "TEXT"),
+)
 
 
 def _migrar_colunas_texto() -> None:
-    """Garante colunas de dicionario/dono (F1.3) e N/A (F1.4) em ``eap_node``."""
+    """Garante colunas de dicionario/dono (F1.3), N/A (F1.4) e retrabalho (F1.6)."""
     for col in _COLUNAS_F13:
         try:
             with _connect() as conn:
@@ -790,7 +798,7 @@ def _migrar_colunas_texto() -> None:
                 conn.commit()
         except Exception:
             pass  # coluna ja existe
-    for col, tipo in _COLUNAS_F14:
+    for col, tipo in _COLUNAS_F14 + _COLUNAS_F16:
         try:
             with _connect() as conn:
                 conn.execute(f"ALTER TABLE eap_node ADD COLUMN {col} {tipo}")
@@ -885,10 +893,16 @@ def resumo_quantitativos(
             continue
         chave = (tf, unid)
         g = grupos.setdefault(chave, {"tipo_frente": tf, "unidade": unid,
-                                      "soma": 0.0, "folhas": 0})
+                                      "soma": 0.0, "previsto": 0.0,
+                                      "retrabalho": 0.0, "folhas": 0})
         q = f.get("quantidade")
         if q is not None:
-            g["soma"] = round(g["soma"] + float(q), 6)
+            valor = float(q)
+            g["soma"] = round(g["soma"] + valor, 6)
+            if f.get("status") == "retrabalho":
+                g["retrabalho"] = round(g["retrabalho"] + valor, 6)
+            else:
+                g["previsto"] = round(g["previsto"] + valor, 6)
         g["folhas"] += 1
     return sorted(grupos.values(), key=lambda x: (x["tipo_frente"], x["unidade"]))
 
@@ -949,8 +963,9 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 tipo_frente, nome, unidade, quantidade,
                 descricao, criterio_medicao, responsavel, disciplina,
                 nao_aplicavel, motivo_na,
+                status, revisao, motivo, origem_uid,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uid,
@@ -970,6 +985,10 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 dados.get("disciplina"),
                 _flag(dados.get("nao_aplicavel")),
                 dados.get("motivo_na"),
+                dados.get("status"),
+                dados.get("revisao"),
+                dados.get("motivo"),
+                dados.get("origem_uid"),
                 _agora_iso(),
                 _agora_iso(),
             ),
@@ -998,7 +1017,8 @@ def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
     valores = []
     for campo in ["frente_id", "local_id", "tipo_frente", "nome",
                   "descricao", "criterio_medicao", "responsavel", "disciplina",
-                  "nao_aplicavel", "motivo_na"]:
+                  "nao_aplicavel", "motivo_na", "status", "revisao", "motivo",
+                  "origem_uid"]:
         if campo in dados:
             campos.append(f"{campo} = ?")
             if campo == "nao_aplicavel":
@@ -1175,6 +1195,64 @@ def mover_nodo(
     return _executar_move(sub, eap_id, novo_parent_id, project_id, motivo)
 
 
+def registrar_retrabalho(
+    eap_id: str | None = None,
+    uid: str | None = None,
+    project_id: str | None = None,
+    motivo: str | None = None,
+) -> dict[str, Any]:
+    """Registra retrabalho como IRMÃO R{n} do original (mesmo pai).
+
+    - ``motivo`` é obrigatório;
+    - original NUNCA é alterado/apagado (só o ``uid`` linkado via origem_uid);
+    - R{n} herda unidade/quantidade do original (custo do retrabalho);
+    - R é folha legítima: NÃO viola folha/quantidade, nem conta como duplicidade.
+    """
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    if not (motivo or "").strip():
+        raise ValueError("motivo é obrigatório para registrar retrabalho.")
+    if uid:
+        original = buscar_por_uid(uid, pid)
+    elif eap_id:
+        original = buscar_por_eap_id(eap_id, pid)
+    else:
+        raise ValueError("Informe 'eap_id' ou 'uid' do nó original.")
+    if original is None:
+        raise ValueError("Nó original não encontrado no projeto.")
+    if original.get("parent_id") is None:
+        raise ValueError("Não é possível retrabalhar a raiz da obra.")
+    pai = buscar_por_eap_id(original["parent_id"], pid)
+    if pai is None:
+        raise ValueError("Pai do nó original não encontrado.")
+
+    filhos = listar_filhos(original["parent_id"], pid)
+    revisoes = [
+        (f.get("revisao") or 0) for f in filhos
+        if f.get("origem_uid") == original["uid"] and f.get("status") == "retrabalho"
+    ]
+    rev = (max(revisoes) + 1) if revisoes else 1
+    eap_novo = proximo_eap_id(original["parent_id"], pid)
+    inserir_nodo({
+        "project_id": pid,
+        "eap_id": eap_novo,
+        "parent_id": original["parent_id"],
+        "nivel": (pai.get("nivel") or 1) + 1,
+        "frente_id": original.get("frente_id") or "",
+        "local_id": original.get("local_id"),
+        "tipo_frente": original.get("tipo_frente") or "",
+        "nome": f"R{rev} · {original.get('nome') or ''}".strip(),
+        "unidade": original.get("unidade"),
+        "quantidade": original.get("quantidade"),
+        "responsavel": original.get("responsavel"),
+        "status": "retrabalho",
+        "revisao": rev,
+        "motivo": motivo,
+        "origem_uid": original["uid"],
+    })
+    novo = buscar_por_eap_id(eap_novo, pid)
+    return novo if novo is not None else {}
+
+
 def _subarvore_ids(eap_id: str, project_id: str) -> list[str]:
     """EAP_IDs da subárvore (eu + descendentes), em ordem."""
     ids: list[str] = []
@@ -1298,8 +1376,9 @@ def _executar_move(
                     tipo_frente, nome, unidade, quantidade,
                     descricao, criterio_medicao, responsavel, disciplina,
                     nao_aplicavel, motivo_na,
+                    status, revisao, motivo, origem_uid,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     uid_no,
@@ -1319,6 +1398,10 @@ def _executar_move(
                     dados.get("disciplina"),
                     _flag(dados.get("nao_aplicavel")),
                     dados.get("motivo_na"),
+                    dados.get("status"),
+                    dados.get("revisao"),
+                    dados.get("motivo"),
+                    dados.get("origem_uid"),
                     dados.get("created_at") or _agora_iso(),
                     _agora_iso(),
                 ),

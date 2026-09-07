@@ -170,6 +170,26 @@ class EAPNodeOutput(BaseModel):
         title="Motivo N/A",
         description="Justificativa quando nao_aplicavel=1 (ex.: provisório, verba).",
     )
+    status: Optional[str] = Field(
+        default=None,
+        title="Status",
+        description="previsto | execucao | concluido | retrabalho.",
+    )
+    revisao: Optional[int] = Field(
+        default=None,
+        title="Revisão",
+        description="Número da revisão/retrabalho (ex.: 1 para R1).",
+    )
+    motivo: Optional[str] = Field(
+        default=None,
+        title="Motivo",
+        description="Motivo do retrabalho.",
+    )
+    origem_uid: Optional[str] = Field(
+        default=None,
+        title="Origem (uid)",
+        description="uid do nó original quando este é um retrabalho R{n}.",
+    )
     parent_id: Optional[str] = Field(
         title="EAP_ID do pai", description="Nulo quando o nó é raiz."
     )

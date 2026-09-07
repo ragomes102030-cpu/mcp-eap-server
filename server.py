@@ -2,7 +2,7 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (16 tools):
+Ferramentas expostas (17 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
@@ -16,6 +16,7 @@ Ferramentas expostas (16 tools):
   * definir_criterio       define dicionario do pacote e dono/OBS (responsavel)
   * pacotes_sem_dono       lista pacotes (folhas) sem responsavel
   * resumo_quantitativos   quantitativos por (tipo_frente, unidade), so folhas
+  * registrar_retrabalho   cria irmao R{n} de retrabalho (origem linkada)
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
   * listar_templates       lista exemplos reais de EAP (templates)
@@ -577,6 +578,30 @@ def resumo_quantitativos(
         pid = project_id or models.DEFAULT_PROJECT_ID
         grupos = models.resumo_quantitativos(pid, tipo_frente)
         return {"project_id": pid, "total_grupos": len(grupos), "grupos": grupos}
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def registrar_retrabalho(
+    motivo: Annotated[str, Field(description="Motivo do retrabalho (obrigatório).", examples=["infiltração em reboco"])],
+    eap_id: Annotated[str | None, Field(description="EAP_ID do nó original.", examples=["1.1.1"])] = None,
+    uid: Annotated[str | None, Field(description="UID estável do nó original (preferível).")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.", examples=["default"])] = None,
+) -> dict[str, Any]:
+    """Registra retrabalho como IRMÃO ``R{n}`` do nó original (mesmo pai).
+
+    Original NUNCA é alterado/apagado: R{n} recebe ``origem_uid`` linkando ao
+    original, herda unidade/quantidade, ``status=retrabalho``, ``revisao`` e
+    ``motivo``. R é folha legítima: não viola folha/quantidade nem conta como
+    duplicidade. ``resumo_quantitativos`` separa previsto × retrabalho.
+    """
+
+    def _executar() -> dict[str, Any]:
+        novo = models.registrar_retrabalho(
+            eap_id=eap_id, uid=uid, project_id=project_id, motivo=motivo,
+        )
+        return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
     return _seguro(_executar)
 
