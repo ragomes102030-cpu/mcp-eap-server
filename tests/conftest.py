@@ -6,6 +6,11 @@ import os
 # Garante que os testes locais nunca toquem o Turso de producao.
 os.environ.pop("TURSO_URL", None)
 os.environ.pop("TURSO_TOKEN", None)
+# Roteiros das fases A/B pre-datam o F1.2 (raiz unica): montam arvores com
+# multiplas raizes e exercitam o ramo AVISO do validar_estrutura. O ramo
+# PROBLEMA (strict, default de producao desde ac6746d) e coberto por
+# test_validar_strict_multi_root (test_models_unit) e pelo aceite do Passo 5.
+os.environ["EAP_STRICT_SINGLE_ROOT"] = "0"
 
 import pytest  # noqa: E402
 

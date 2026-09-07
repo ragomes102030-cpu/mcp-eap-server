@@ -64,6 +64,19 @@ def test_validar_avisos_semanticos(db):
     assert "diverge do pai '1'" in texto
 
 
+def test_validar_strict_multi_root(db):
+    """F1.2: com strict (default de producao), multi-raiz e PROBLEMA, nao aviso."""
+    nos_de_teste(db)  # arvore com 2 raizes (1 e 2)
+    r = db.validar_estrutura("default", strict_single_root=True)
+    assert r["resumo"]["total_problemas"] == 1
+    assert r["resumo"]["arvore_valida"] is False
+    assert any("MULTI_ROOT" in p for p in r["problemas"])
+    # O ramo legado (aviso, strict desligado) continua disponivel.
+    r2 = db.validar_estrutura("default", strict_single_root=False)
+    assert r2["resumo"]["total_problemas"] == 0
+    assert any("raízes" in a or "raizes" in a for a in r2["avisos"])
+
+
 def test_validar_caixa_alta_e_agregador_com_unidade(db):
     db.inserir_nodo({"eap_id": "1", "parent_id": None, "nivel": 1,
                      "frente_id": "FR-A", "local_id": "L1",

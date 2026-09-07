@@ -5,6 +5,7 @@ garantem que o contrato MCP completo permanece verde.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -24,12 +25,16 @@ BATERIAS = [
 @pytest.mark.integracao
 @pytest.mark.parametrize("script", BATERIAS)
 def test_bateria_funcional(script):
+    # Roteiros A/B pre-datam o strict single root (F1.2): exercitam o ramo
+    # aviso. O ramo problema (producao) tem cobertura unitaria dedicada.
+    env = dict(os.environ, EAP_STRICT_SINGLE_ROOT="0")
     proc = subprocess.run(
         [sys.executable, script],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         timeout=420,
+        env=env,
     )
     assert proc.returncode == 0, (
         f"{script} FALHOU (rc={proc.returncode})\n"
