@@ -22,6 +22,7 @@ eap.db
 
 # Backups de restauração locais
 __restore_*/
+backup/
 
 # IDEs / OS
 .DS_Store
