@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS eap_node (
     nome         TEXT NOT NULL,
     unidade      TEXT,
     quantidade   REAL,
+    descricao    TEXT,
+    criterio_medicao TEXT,
+    responsavel  TEXT,
+    disciplina   TEXT,
     created_at   TEXT DEFAULT (datetime('now')),
     updated_at   TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (project_id, eap_id),
@@ -324,6 +328,7 @@ def init_db() -> None:
     _migrar_eap_node_para_multiprojeto()
     _migrar_registrar_projetos()
     _migrar_uid()
+    _migrar_colunas_texto()
 
 
 def _migrar_eap_node_para_multiprojeto() -> None:
@@ -692,6 +697,20 @@ def _migrar_uid() -> None:
         pass
 
 
+_COLUNAS_F13 = ("descricao", "criterio_medicao", "responsavel", "disciplina")
+
+
+def _migrar_colunas_texto() -> None:
+    """Garante as colunas de dicionario/dono (F1.3) em ``eap_node`` (idempotente)."""
+    for col in _COLUNAS_F13:
+        try:
+            with _connect() as conn:
+                conn.execute(f"ALTER TABLE eap_node ADD COLUMN {col} TEXT")
+                conn.commit()
+        except Exception:
+            pass  # coluna ja existe
+
+
 def buscar_por_eap_id(
     eap_id: str, project_id: str | None = None
 ) -> dict[str, Any] | None:
@@ -740,6 +759,21 @@ def listar_todos(project_id: str | None = None) -> list[dict[str, Any]]:
     rows = [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
     rows.sort(key=lambda n: _chave_ordem(n["eap_id"]))
     return rows
+
+
+def listar_pacotes_sem_dono(
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Folhas (itens mensuráveis) ainda sem ``responsavel`` definido (OBS)."""
+    todos = listar_todos(project_id)
+    sao_pais = {n["parent_id"] for n in todos if n.get("parent_id") is not None}
+    folhas = [n for n in todos if n["eap_id"] not in sao_pais]
+    sem_dono = [
+        n for n in folhas
+        if not (n.get("responsavel") or "").strip()
+    ]
+    sem_dono.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return sem_dono
 
 
 def _ultimo_segmento(eap_id: str) -> int:
@@ -795,8 +829,10 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
             """
             INSERT INTO eap_node (
                 uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
-                tipo_frente, nome, unidade, quantidade, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tipo_frente, nome, unidade, quantidade,
+                descricao, criterio_medicao, responsavel, disciplina,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uid,
@@ -810,6 +846,10 @@ def inserir_nodo(dados: dict[str, Any]) -> dict[str, Any]:
                 dados["nome"],
                 unidade,
                 quantidade,
+                dados.get("descricao"),
+                dados.get("criterio_medicao"),
+                dados.get("responsavel"),
+                dados.get("disciplina"),
                 _agora_iso(),
                 _agora_iso(),
             ),
@@ -836,7 +876,8 @@ def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
 
     campos = []
     valores = []
-    for campo in ["frente_id", "local_id", "tipo_frente", "nome"]:
+    for campo in ["frente_id", "local_id", "tipo_frente", "nome",
+                  "descricao", "criterio_medicao", "responsavel", "disciplina"]:
         if campo in dados:
             campos.append(f"{campo} = ?")
             valores.append(dados[campo])
@@ -1130,8 +1171,10 @@ def _executar_move(
                 """
                 INSERT INTO eap_node (
                     uid, eap_id, parent_id, nivel, project_id, frente_id, local_id,
-                    tipo_frente, nome, unidade, quantidade, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tipo_frente, nome, unidade, quantidade,
+                    descricao, criterio_medicao, responsavel, disciplina,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     uid_no,
@@ -1145,6 +1188,10 @@ def _executar_move(
                     dados["nome"],
                     dados.get("unidade"),
                     dados.get("quantidade"),
+                    dados.get("descricao"),
+                    dados.get("criterio_medicao"),
+                    dados.get("responsavel"),
+                    dados.get("disciplina"),
                     dados.get("created_at") or _agora_iso(),
                     _agora_iso(),
                 ),
@@ -1261,6 +1308,10 @@ def validar_estrutura(
                 f"Nó '{nodo['eap_id']}' é agregador (tem {len(filhos)} filho(s)) "
                 f"mas carrega unidade de medida '{nodo.get('unidade')}': "
                 "deixe a unidade para as folhas."
+            )
+        if not filhos and not (nodo.get("responsavel") or "").strip():
+            avisos.append(
+                f"SEM_DONO: folha '{nodo['eap_id']}' ('{nome[:40]}') sem responsável."
             )
         for filho in filhos:
             if (nivel == 1 and filho.get("tipo_frente") and nodo.get("tipo_frente")

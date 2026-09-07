@@ -81,7 +81,7 @@ async def main() -> None:
                 # seed Piemarta (default): integridade OK, mas avisos semanticos
                 val = await call("validar_estrutura", {})
                 res = val["resumo"]
-                ok(res["total_nos"] == 9, f"seed: 9 nos")
+                ok(res["total_nos"] == 9, "seed: 9 nos")
                 ok(res["total_problemas"] == 0 and res["arvore_valida"] is True,
                    "seed: 0 problemas estruturais (arvore_valida True)")
                 ok("total_avisos" in res and res["total_avisos"] > 0,
@@ -115,6 +115,8 @@ async def main() -> None:
                     "parent_id": "1.1", "frente_id": "FR-A", "local_id": "AP-1",
                     "tipo_frente": "estrutura", "unidade": "m³", "quantidade": 12.0,
                 })
+                await call("definir_criterio", {"eap_id": "1.1.1", "project_id": "OBRA-CLEAN",
+                                                "responsavel": "Equipe de estrutura"})
                 valc = await call("validar_estrutura", {"project_id": "OBRA-CLEAN"})
                 rc = valc["resumo"]
                 ok(rc["total_nos"] == 3 and rc["total_problemas"] == 0

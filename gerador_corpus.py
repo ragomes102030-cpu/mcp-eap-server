@@ -90,6 +90,21 @@ SUBSTANTIVOS = ["das Flores", "dos Ipês", "do Lago", "Vista Verde", "Alvorada",
 CLIENTES = ["Construtora Andrade Lima", "MRV Engenharia", "Plaenge", "Cyrela", "Tenda",
             "Construtora Bela Vista", "Incorporadora Horizonte", "Moura Dubeux", "Pessoa Física", "Prefeitura Municipal"]
 
+RESPONSAVEL_POR_TIPO = {
+    "preliminares": "Empreiteira geral",
+    "fundacao": "Equipe de fundações",
+    "estrutura": "Equipe de estrutura",
+    "alvenaria": "Equipe de alvenaria",
+    "cobertura": "Equipe de cobertura",
+    "eletrica": "Eletricista terceirizado",
+    "hidrossanitaria": "Encanador terceirizado",
+    "esquadrias": "Fornecedor de esquadrias",
+    "revestimento": "Equipe de revestimento",
+    "pintura": "Equipe de pintura",
+    "acabamento": "Equipe de acabamentos",
+    "projeto": "Engenharia da obra",
+}
+
 UNIDADES_DECIMAIS = {"m³", "m²", "ml", "kg"}
 
 
@@ -139,6 +154,8 @@ def gerar_projeto(m: "models", rng: random.Random, idx: int) -> dict:
                             "parent_id": fase_eap, "nivel": 3,
                             "frente_id": "", "local_id": None,
                             "tipo_frente": fase_tipo, "nome": item_nome,
+                            "responsavel": RESPONSAVEL_POR_TIPO.get(
+                                fase_tipo, "Equipe de obra"),
                             "unidade": unidade, "quantidade": quantidade})
             total_nos += 1
 

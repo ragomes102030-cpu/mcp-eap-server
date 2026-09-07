@@ -79,7 +79,7 @@ async def main() -> None:
                 await s.initialize()
                 tools = await s.list_tools()
                 nomes = sorted(t.name for t in tools.tools)
-                ok(len(nomes) == 13, f"tools/list expoe 13 tools (tem {len(nomes)})")
+                ok(len(nomes) == 15, f"tools/list expoe 15 tools (tem {len(nomes)})")
                 ok("criar_projeto" in nomes and "atualizar_projeto" in nomes,
                    "tools de projeto presentes")
 
@@ -124,13 +124,13 @@ async def main() -> None:
                     "frente_id": "FR-A", "local_id": "CASA-1",
                     "tipo_frente": "fundacao", "unidade": "m³", "quantidade": 24.0,
                 })
-                ok(leaf.get("eap_id") == "1.1", f"OBRA-2 filho 1.1")
+                ok(leaf.get("eap_id") == "1.1", "OBRA-2 filho 1.1")
                 viga = await call("criar_eap_node", {
                     "project_id": "OBRA-2", "nome": "VIGA BALDRAME", "parent_id": "1",
                     "frente_id": "FR-A", "local_id": "CASA-1",
                     "tipo_frente": "fundacao", "unidade": "m³", "quantidade": 8.0,
                 })
-                ok(viga.get("eap_id") == "1.2", f"OBRA-2 filho 1.2")
+                ok(viga.get("eap_id") == "1.2", "OBRA-2 filho 1.2")
 
                 # ---- 4) ISOLAMENTO entre projetos ----
                 no_default = await call("get_eap_node", {"eap_id": "1"})
@@ -145,7 +145,7 @@ async def main() -> None:
 
                 val2 = await call("validar_estrutura", {"project_id": "OBRA-2"})
                 ok(val2["resumo"]["total_nos"] == 3 and val2["resumo"]["arvore_valida"] is True,
-                   f"validar OBRA-2: 3 nos validos")
+                   "validar OBRA-2: 3 nos validos")
                 val_def = await call("validar_estrutura", {})
                 ok(val_def["resumo"]["total_nos"] == 9,
                    "validar default nao contaminado pela OBRA-2")

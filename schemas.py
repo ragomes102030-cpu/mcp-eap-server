@@ -130,6 +130,26 @@ class EAPNodeOutput(BaseModel):
         title="UID",
         description="Referência estável e imutável do nó (não muda em movimentações).",
     )
+    descricao: Optional[str] = Field(
+        default=None,
+        title="Descrição",
+        description="Dicionário do pacote: o que está (e não está) incluído.",
+    )
+    criterio_medicao: Optional[str] = Field(
+        default=None,
+        title="Critério de medição",
+        description="Como medir: vãos descontados, perdas, faixas de medição.",
+    )
+    responsavel: Optional[str] = Field(
+        default=None,
+        title="Responsável (OBS)",
+        description="Dono do pacote (quem executa/é cobrado).",
+    )
+    disciplina: Optional[str] = Field(
+        default=None,
+        title="Disciplina",
+        description="Disciplina técnica (civil, elétrica, hidráulica...).",
+    )
     parent_id: Optional[str] = Field(
         title="EAP_ID do pai", description="Nulo quando o nó é raiz."
     )

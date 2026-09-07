@@ -13,6 +13,8 @@ Ferramentas expostas (13 tools):
   * listar_projetos        lista projetos com contagem de nos
   * criar_projeto          cria um novo projeto (obra) com metadados
   * atualizar_projeto      atualiza metadados de um projeto (obra)
+  * definir_criterio       define dicionario do pacote e dono/OBS (responsavel)
+  * pacotes_sem_dono       lista pacotes (folhas) sem responsavel
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
   * listar_templates       lista exemplos reais de EAP (templates)
@@ -489,6 +491,65 @@ def atualizar_projeto(
             ativo=(1 if ativo else 0) if ativo is not None else None,
         )
         return schemas.ProjetoOutput.model_validate(projeto).model_dump()
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def definir_criterio(
+    eap_id: Annotated[str | None, Field(description="EAP_ID do nó (display).", examples=["1.1.1"])] = None,
+    uid: Annotated[str | None, Field(description="UID estável do nó (preferível).", examples=["a1b2..."])] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.", examples=["default"])] = None,
+    descricao: Annotated[str | None, Field(description="Dicionário do pacote: o que está (e não está) incluído.")] = None,
+    criterio_medicao: Annotated[str | None, Field(description="Critério de medição (vãos descontados, perdas, faixas).")] = None,
+    responsavel: Annotated[str | None, Field(description="Dono/OBS do pacote (quem executa e é cobrado).")] = None,
+    disciplina: Annotated[str | None, Field(description="Disciplina técnica (civil, eletrica, hidraulica...).")] = None,
+) -> dict[str, Any]:
+    """Define o dicionário e o dono de um pacote (nó).
+
+    Preenche campos opcionais de WBS dictionary (``descricao``,
+    ``criterio_medicao``) e de OBS (``responsavel``, ``disciplina``).
+    Aceita ``eap_id`` OU ``uid``.
+    """
+
+    def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        if uid:
+            node = models.buscar_por_uid(uid, pid)
+        elif eap_id:
+            node = models.buscar_por_eap_id(eap_id, pid)
+        else:
+            return schemas.ErroOutput(erro="Informe 'uid' ou 'eap_id'.").model_dump()
+        if node is None:
+            return schemas.ErroOutput(erro="Nó não encontrado no projeto.").model_dump()
+        campos = {k: v for k, v in {
+            "descricao": descricao, "criterio_medicao": criterio_medicao,
+            "responsavel": responsavel, "disciplina": disciplina,
+        }.items() if v is not None}
+        if not campos:
+            return schemas.ErroOutput(
+                erro="Informe ao menos um campo (descricao, criterio_medicao, responsavel, disciplina)."
+            ).model_dump()
+        novo = models.atualizar_nodo(node["eap_id"], {**campos, "project_id": pid})
+        return schemas.EAPNodeOutput.model_validate(novo).model_dump()
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def pacotes_sem_dono(
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.", examples=["default"])] = None,
+) -> dict[str, Any]:
+    """Lista pacotes (folhas mensuráveis) que ainda NÃO têm responsável (OBS)."""
+
+    def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        nos = models.listar_pacotes_sem_dono(pid)
+        return {
+            "project_id": pid,
+            "total": len(nos),
+            "nos": [schemas.EAPNodeOutput.model_validate(n).model_dump() for n in nos],
+        }
 
     return _seguro(_executar)
 
