@@ -101,30 +101,35 @@ def test_projeto_dao(db):
     up = db.atualizar_projeto("OBRA-1", area_m2=200.0, cliente="ACME")
     assert up["area_m2"] == 200.0 and up["cliente"] == "ACME"
     lista = {x["project_id"]: x for x in db.listar_projetos()}
-    assert lista["OBRA-1"]["total_nos"] == 0
-    db.inserir_nodo({"project_id": "OBRA-1", "eap_id": "1", "parent_id": None,
-                     "nivel": 1, "frente_id": "FR-A", "tipo_frente": "estrutura",
-                     "nome": "Estrutura", "unidade": "conj", "quantidade": None})
+    assert lista["OBRA-1"]["total_nos"] == 1  # raiz criada por criar_projeto
+    raiz = db.buscar_por_eap_id("1", "OBRA-1")
+    assert raiz is not None and raiz["tipo_frente"] == "projeto"
+    assert raiz["nome"] == "Residencial Teste"
+    db.inserir_nodo({"project_id": "OBRA-1", "eap_id": "1.1", "parent_id": "1",
+                     "nivel": 2, "frente_id": "FR-A", "tipo_frente": "fundacao",
+                     "nome": "Fundacoes", "unidade": None, "quantidade": None})
     lista2 = {x["project_id"]: x for x in db.listar_projetos()}
-    assert lista2["OBRA-1"]["total_nos"] == 1
+    assert lista2["OBRA-1"]["total_nos"] == 2
     delp = db.deletar_projeto("OBRA-1")
-    assert delp["deletado"] is True and delp["total_nos"] == 1
+    assert delp["deletado"] is True and delp["total_nos"] == 2
     assert db.buscar_projeto("OBRA-1") is None
 
 
 def test_isolamento_entre_projetos(db):
     nos_de_teste(db)  # default com '1' e '2'
     db.criar_projeto("P2")
-    db.inserir_nodo({"project_id": "P2", "eap_id": "1", "parent_id": None,
-                     "nivel": 1, "frente_id": "FR-X", "tipo_frente": "fundacao",
-                     "nome": "Fundacao dois", "unidade": "conj", "quantidade": None})
+    db.inserir_nodo({"project_id": "P2", "eap_id": "1.1", "parent_id": "1",
+                     "nivel": 2, "frente_id": "FR-X", "tipo_frente": "fundacao",
+                     "nome": "Fundacao dois", "unidade": None, "quantidade": None})
     assert db.buscar_por_eap_id("1", "default")["nome"] == "Fundacoes"
-    assert db.buscar_por_eap_id("1", "P2")["nome"] == "Fundacao dois"
+    assert db.buscar_por_eap_id("1", "P2")["nome"] == "P2"  # raiz automatica
+    assert db.buscar_por_eap_id("1", "P2")["tipo_frente"] == "projeto"
+    assert db.buscar_por_eap_id("1.1", "P2")["nome"] == "Fundacao dois"
     # sem projeto, a busca assume o default (nunca cruza projetos)
     assert db.buscar_por_eap_id("1")["project_id"] == "default"
-    assert db.validar_estrutura("P2")["resumo"]["total_nos"] == 1
+    assert db.validar_estrutura("P2")["resumo"]["total_nos"] == 2
     assert db.validar_estrutura("default")["resumo"]["total_nos"] == 4
-    assert db.listar_filhos("1", "P2") == []
+    assert [f["eap_id"] for f in db.listar_filhos("1", "P2")] == ["1.1"]
 
 
 def test_auto_registro_projeto_ao_inserir(db):

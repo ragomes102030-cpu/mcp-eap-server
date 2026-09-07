@@ -128,11 +128,7 @@ def gerar_projeto(m: "models", rng: random.Random, idx: int) -> dict:
     m.criar_projeto(pid, nome=nome, tipo_obra=tipo, area_m2=area,
                     metodo_construtivo=metodo, regiao=regiao, cliente=cliente)
 
-    m.inserir_nodo({"project_id": pid, "eap_id": "1", "parent_id": None,
-                    "nivel": 1, "frente_id": "", "local_id": None,
-                    "tipo_frente": "", "nome": nome,
-                    "unidade": None, "quantidade": None})
-
+    # F1.2: criar_projeto já cria a raiz da obra (nó 'projeto', eap '1').
     total_nos = 1
     num_fase = 0
     for fase_nome, fase_tipo, itens in FASES:

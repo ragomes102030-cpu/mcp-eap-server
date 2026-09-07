@@ -105,47 +105,52 @@ async def main() -> None:
                     "metodo_construtivo": "alvenaria_estrutural",
                     "regiao": "sudeste", "cliente": "Cliente Exemplo LTDA",
                 })
-                ok(novo.get("project_id") == "OBRA-2" and novo.get("total_nos") == 0,
-                   f"criar_projeto OBRA-2 (nos={novo.get('total_nos')})")
+                ok(novo.get("project_id") == "OBRA-2" and novo.get("total_nos") == 1,
+                   f"criar_projeto OBRA-2 cria a raiz (nos={novo.get('total_nos')})")
                 dup = await call("criar_projeto", {"project_id": "OBRA-2", "nome": "duplicado"})
                 ok("erro" in dup and "já existe" in dup.get("erro", ""),
                    f"criar_projeto duplicado rejeitado: {dup.get('erro','')[:50]}")
                 noex = await call("atualizar_projeto", {"project_id": "nao-existe", "nome": "x"})
                 ok("erro" in noex, "atualizar_projeto inexistente -> erro")
 
-                raiz = await call("criar_eap_node", {
-                    "project_id": "OBRA-2", "nome": "FUNDACOES",
+                raiz_auto = await call("get_eap_node", {"eap_id": "1", "project_id": "OBRA-2"})
+                ok(raiz_auto.get("tipo_frente") == "projeto"
+                   and raiz_auto.get("nome") == "Residencial Teste",
+                   f"criar_projeto cria raiz [projeto]: {raiz_auto.get('nome')!r}")
+                fase = await call("criar_eap_node", {
+                    "project_id": "OBRA-2", "nome": "FUNDACOES", "parent_id": "1",
                     "frente_id": "FR-A", "local_id": "CASA-1", "tipo_frente": "fundacao",
                 })
-                ok(raiz.get("eap_id") == "1" and raiz.get("nivel") == 1,
-                   f"OBRA-2 raiz: {raiz.get('eap_id')}")
+                ok(fase.get("eap_id") == "1.1" and fase.get("nivel") == 2,
+                   f"OBRA-2 fase sob raiz automatica: {fase.get('eap_id')}")
                 leaf = await call("criar_eap_node", {
-                    "project_id": "OBRA-2", "nome": "SAPATA TIPO 1", "parent_id": "1",
+                    "project_id": "OBRA-2", "nome": "SAPATA TIPO 1", "parent_id": "1.1",
                     "frente_id": "FR-A", "local_id": "CASA-1",
                     "tipo_frente": "fundacao", "unidade": "m³", "quantidade": 24.0,
                 })
-                ok(leaf.get("eap_id") == "1.1", "OBRA-2 filho 1.1")
+                ok(leaf.get("eap_id") == "1.1.1", "OBRA-2 filho 1.1.1")
                 viga = await call("criar_eap_node", {
-                    "project_id": "OBRA-2", "nome": "VIGA BALDRAME", "parent_id": "1",
+                    "project_id": "OBRA-2", "nome": "VIGA BALDRAME", "parent_id": "1.1",
                     "frente_id": "FR-A", "local_id": "CASA-1",
                     "tipo_frente": "fundacao", "unidade": "m³", "quantidade": 8.0,
                 })
-                ok(viga.get("eap_id") == "1.2", "OBRA-2 filho 1.2")
+                ok(viga.get("eap_id") == "1.1.2", "OBRA-2 filho 1.1.2")
 
                 # ---- 4) ISOLAMENTO entre projetos ----
                 no_default = await call("get_eap_node", {"eap_id": "1"})
                 no_obra2 = await call("get_eap_node", {"eap_id": "1", "project_id": "OBRA-2"})
-                ok(no_default.get("nome") == "FUNDAÇÕES" and no_obra2.get("nome") == "FUNDACOES",
+                ok(no_default.get("nome") == "FUNDAÇÕES"
+                   and no_obra2.get("nome") == "Residencial Teste",
                    f"mesmo eap_id '1': default={no_default.get('nome')!r} vs OBRA-2={no_obra2.get('nome')!r}")
                 filho_default = await call("get_eap_node", {"eap_id": "1.1.1"})
-                filho_obra2 = await call("get_eap_node", {"eap_id": "1.1", "project_id": "OBRA-2"})
+                filho_obra2 = await call("get_eap_node", {"eap_id": "1.1.1", "project_id": "OBRA-2"})
                 ok(filho_default.get("nome") == "ESCAVAÇÃO SAPATAS"
                    and filho_obra2.get("nome") == "SAPATA TIPO 1",
                    "subnos independentes entre projetos")
 
                 val2 = await call("validar_estrutura", {"project_id": "OBRA-2"})
-                ok(val2["resumo"]["total_nos"] == 3 and val2["resumo"]["arvore_valida"] is True,
-                   "validar OBRA-2: 3 nos validos")
+                ok(val2["resumo"]["total_nos"] == 4 and val2["resumo"]["arvore_valida"] is True,
+                   "validar OBRA-2: 4 nos validos (raiz + fase + 2 folhas)")
                 val_def = await call("validar_estrutura", {})
                 ok(val_def["resumo"]["total_nos"] == 9,
                    "validar default nao contaminado pela OBRA-2")
@@ -161,21 +166,22 @@ async def main() -> None:
 
                 # ---- 5) UPDATE/MOVE/DELETE escopados ao projeto ----
                 upd = await call("atualizar_eap_node", {
-                    "eap_id": "1.1", "project_id": "OBRA-2", "nome": "SAPATA TIPO 1 REV A",
+                    "eap_id": "1.1.1", "project_id": "OBRA-2", "nome": "SAPATA TIPO 1 REV A",
                 })
                 ok(upd.get("nome") == "SAPATA TIPO 1 REV A", "atualizar no na OBRA-2 (escopado)")
                 mov = await call("move_eap_node", {
-                    "eap_id": "1.2", "novo_parent_id": None, "project_id": "OBRA-2",
+                    "eap_id": "1.1.2", "novo_parent_id": None, "project_id": "OBRA-2",
+                    "motivo": "teste isolamento move",
                 })
                 ok(mov.get("movido") is True and mov.get("eap_id") == "2"
                    and mov.get("nivel") == 1,
-                   f"mover OBRA-2 1.2 p/ raiz vira {mov.get('eap_id')}")
+                   f"mover OBRA-2 1.1.2 p/ raiz vira {mov.get('eap_id')}")
                 delx = await call("deletar_eap_node", {
                     "eap_id": "2", "cascade": True, "project_id": "OBRA-2",
                 })
                 ok(delx.get("deletado") is True, "deletar subarvore na OBRA-2")
                 val3 = await call("validar_estrutura", {"project_id": "OBRA-2"})
-                ok(val3["resumo"]["total_nos"] == 2, f"OBRA-2 apos move/delete: {val3['resumo']['total_nos']} nos")
+                ok(val3["resumo"]["total_nos"] == 3, f"OBRA-2 apos move/delete: {val3['resumo']['total_nos']} nos")
 
                 # ---- 6) METADADOS + LISTA + LIMPEZA ----
                 updp = await call("atualizar_projeto", {
@@ -185,7 +191,7 @@ async def main() -> None:
                    f"atualizar_projeto OK: {updp.get('nome')} / {updp.get('area_m2')} m2")
                 prjs2 = await call("listar_projetos", {})
                 mapa = {p["project_id"]: p for p in prjs2["projetos"]}
-                ok(prjs2["total_projetos"] == 2 and mapa["OBRA-2"]["total_nos"] == 2,
+                ok(prjs2["total_projetos"] == 2 and mapa["OBRA-2"]["total_nos"] == 3,
                    f"listar_projetos: 2 projetos (OBRA-2={mapa.get('OBRA-2',{}).get('total_nos')} nos)")
                 ok(mapa["OBRA-2"]["nome"] == "Residencial Teste REV B",
                    "listar_projetos reflete metadados atualizados")
@@ -201,7 +207,7 @@ async def main() -> None:
                    "projeto implicito aparece no listar_projetos")
 
                 dep = await call("deletar_projeto", {"project_id": "OBRA-2"})
-                ok(dep.get("deletado") is True and dep.get("total_nos") == 2,
+                ok(dep.get("deletado") is True and dep.get("total_nos") == 3,
                    f"deletar_projeto OBRA-2 remove nos+metadados ({dep.get('total_nos')} removidos)")
                 dep2 = await call("deletar_projeto", {"project_id": "obra-sem-metadata"})
                 ok(dep2.get("deletado") is True and dep2.get("total_nos") == 1,

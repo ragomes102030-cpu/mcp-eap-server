@@ -96,19 +96,15 @@ async def main() -> None:
                    "aviso tipo_frente divergente no nivel 2 presente (1.2 sob 1)")
                 log("  AVISOS SEED: " + json.dumps(val["avisos"], ensure_ascii=False)[:600])
 
-                # projeto "limpo" (nomes capitalizados, raiz unica, tipos iguais)
+                # projeto "limpo" (raiz automatica [projeto], nomes capitalizados,
+                # tipos coerentes, folha com dono)
                 await call("criar_projeto", {
                     "project_id": "OBRA-CLEAN", "nome": "Obra Limpa",
                     "tipo_obra": "apartamento", "area_m2": 80.0,
                 })
                 await call("criar_eap_node", {
-                    "project_id": "OBRA-CLEAN", "nome": "Estrutura",
+                    "project_id": "OBRA-CLEAN", "nome": "Estrutura", "parent_id": "1",
                     "frente_id": "FR-A", "local_id": "AP-1", "tipo_frente": "estrutura",
-                })
-                await call("criar_eap_node", {
-                    "project_id": "OBRA-CLEAN", "nome": "Pilares",
-                    "parent_id": "1", "frente_id": "FR-A", "local_id": "AP-1",
-                    "tipo_frente": "estrutura",
                 })
                 await call("criar_eap_node", {
                     "project_id": "OBRA-CLEAN", "nome": "Concreto pilares",

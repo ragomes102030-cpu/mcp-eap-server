@@ -541,7 +541,11 @@ def criar_projeto(
     regiao: str | None = None,
     cliente: str | None = None,
 ) -> dict[str, Any]:
-    """Cria os metadados de um novo projeto (obra). Erro se já existir."""
+    """Cria os metadados de um novo projeto (obra) e a raiz da EAP.
+
+    A raiz é o nó ``[projeto]`` (nível 1, ``nome`` = nome da obra). Erro se o
+    projeto já existir.
+    """
     pid = (project_id or "").strip()
     if not pid:
         raise ValueError("project_id é obrigatório e não pode ser vazio.")
@@ -558,7 +562,19 @@ def criar_projeto(
             (pid, nome or pid, tipo_obra, area_m2, metodo_construtivo, regiao, cliente),
         )
         conn.commit()
-    return buscar_projeto(pid)  # type: ignore[return-value]
+
+    # F1.2 - projeto = obra: já cria a raiz da EAP (nó 'projeto', nível 1).
+    eap_raiz = proximo_eap_id(None, pid)
+    inserir_nodo({
+        "project_id": pid, "eap_id": eap_raiz, "parent_id": None,
+        "nivel": 1, "frente_id": "", "local_id": None,
+        "tipo_frente": "projeto", "nome": nome or pid,
+        "unidade": None, "quantidade": None,
+    })
+    resultado = buscar_projeto(pid)
+    if resultado is not None:
+        resultado["total_nos"] = 1
+    return resultado  # type: ignore[return-value]
 
 
 def atualizar_projeto(project_id: str, **campos: Any) -> dict[str, Any]:

@@ -54,10 +54,7 @@ def test_move_ciclo_bloqueado(db):
 
 def test_buscar_por_uid_projeto_escopado(db):
     nos_de_teste(db)
-    db.criar_projeto("P2")
-    db.inserir_nodo({"project_id": "P2", "eap_id": "1", "parent_id": None,
-                     "nivel": 1, "frente_id": "FR-X", "tipo_frente": "estrutura",
-                     "nome": "Raiz p2", "unidade": None, "quantidade": None})
+    db.criar_projeto("P2")  # criar_projeto ja cria a raiz '1' (tipo projeto)
     uid_p2 = db.buscar_por_eap_id("1", "P2")["uid"]
     assert db.buscar_por_uid(uid_p2, "default") is None   # uid vive no P2
     assert db.buscar_por_uid(uid_p2, "P2")["project_id"] == "P2"
