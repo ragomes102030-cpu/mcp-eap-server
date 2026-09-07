@@ -48,8 +48,10 @@ FASES = [
         ("Telhas cerâmicas", "m²", 125.0),
         ("Cumeeiras e acessórios", "ml", 30.0),
     ]),
-    ("Instalações", "instalacoes", [
+    ("Instalações elétricas", "eletrica", [
         ("Pontos elétricos", "pt", 55.0),
+    ]),
+    ("Instalações hidrossanitárias", "hidrossanitaria", [
         ("Pontos hidráulicos", "pt", 30.0),
         ("Redes de esgoto", "ml", 45.0),
     ]),

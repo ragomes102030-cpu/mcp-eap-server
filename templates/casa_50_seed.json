@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "project_id": "casa-terreno-50m2",
+    "nome": "Casa 50m² — Terreno 50m²",
+    "tipo_obra": "casa",
+    "area_m2": 50,
+    "metodo_construtivo": "alvenaria_estrutural",
+    "regiao": "sudeste",
+    "nota": "Seed canonico F1.2 (raiz unica). 9 fases sob a raiz (1.1-1.9). Folhas de casa de 50m2 (valores referenciais, nao 'chutados'). LOCAL_ID=TERREO-GERAL nas folhas. Tipos eletrica/hidrossanitaria sao o alvo do vocabulario F1 (§3) - exigem atualizar o vocabulario fechado antes da importacao.",
+    "total_nos": 26
+  },
+  "nodes": [
+    {"project_id": "casa-terreno-50m2", "eap_id": "1",   "parent_id": null, "uid": "casa50-raiz-0001", "nivel": 1, "tipo_frente": "projeto",        "nome": "Casa 50m² — Terreno 50m²", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.1", "parent_id": "1", "uid": "casa50-pre-0002", "nivel": 2, "tipo_frente": "preliminares",   "nome": "Serviços preliminares", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.1.1", "parent_id": "1.1", "uid": "casa50-pre-lim-0003", "nivel": 3, "tipo_frente": "preliminares", "nome": "Limpeza e locação da obra", "unidade": "m²", "quantidade": 50.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.2", "parent_id": "1", "uid": "casa50-fun-0004", "nivel": 2, "tipo_frente": "fundacao",       "nome": "Fundações", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.2.1", "parent_id": "1.2", "uid": "casa50-fun-esc-0005", "nivel": 3, "tipo_frente": "fundacao", "nome": "Escavação de valas e sapatas", "unidade": "m³", "quantidade": 14.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.2.2", "parent_id": "1.2", "uid": "casa50-fun-con-0006", "nivel": 3, "tipo_frente": "fundacao", "nome": "Concreto das sapatas", "unidade": "m³", "quantidade": 3.4, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.2.3", "parent_id": "1.2", "uid": "casa50-fun-aco-0007", "nivel": 3, "tipo_frente": "fundacao", "nome": "Aço CA-50 das fundações", "unidade": "kg", "quantidade": 210.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.3", "parent_id": "1", "uid": "casa50-est-0008", "nivel": 2, "tipo_frente": "estrutura",      "nome": "Estrutura", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.3.1", "parent_id": "1.3", "uid": "casa50-est-pil-0009", "nivel": 3, "tipo_frente": "estrutura", "nome": "Pilares e vigas de concreto", "unidade": "m³", "quantidade": 1.2, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.4", "parent_id": "1", "uid": "casa50-alv-0010", "nivel": 2, "tipo_frente": "alvenaria",      "nome": "Alvenaria", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.4.1", "parent_id": "1.4", "uid": "casa50-alv-blo-0011", "nivel": 3, "tipo_frente": "alvenaria", "nome": "Blocos cerâmicos 9 cm", "unidade": "m²", "quantidade": 135.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.5", "parent_id": "1", "uid": "casa50-cob-0012", "nivel": 2, "tipo_frente": "cobertura",     "nome": "Cobertura", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.5.1", "parent_id": "1.5", "uid": "casa50-cob-est-0013", "nivel": 3, "tipo_frente": "cobertura", "nome": "Estrutura do telhado", "unidade": "m²", "quantidade": 60.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.5.2", "parent_id": "1.5", "uid": "casa50-cob-tel-0014", "nivel": 3, "tipo_frente": "cobertura", "nome": "Telhas cerâmicas", "unidade": "m²", "quantidade": 60.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.6", "parent_id": "1", "uid": "casa50-ele-0015", "nivel": 2, "tipo_frente": "eletrica",       "nome": "Instalações elétricas", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.6.1", "parent_id": "1.6", "uid": "casa50-ele-pto-0016", "nivel": 3, "tipo_frente": "eletrica", "nome": "Pontos elétricos", "unidade": "pt", "quantidade": 16.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.6.2", "parent_id": "1.6", "uid": "casa50-ele-qua-0017", "nivel": 3, "tipo_frente": "eletrica", "nome": "Quadro de distribuição", "unidade": "un", "quantidade": 1.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.7", "parent_id": "1", "uid": "casa50-hid-0018", "nivel": 2, "tipo_frente": "hidrossanitaria", "nome": "Instalações hidrossanitárias", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.7.1", "parent_id": "1.7", "uid": "casa50-hid-pto-0019", "nivel": 3, "tipo_frente": "hidrossanitaria", "nome": "Pontos hidráulicos", "unidade": "pt", "quantidade": 10.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.7.2", "parent_id": "1.7", "uid": "casa50-hid-esc-0020", "nivel": 3, "tipo_frente": "hidrossanitaria", "nome": "Rede de esgoto", "unidade": "ml", "quantidade": 22.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.8", "parent_id": "1", "uid": "casa50-esq-0021", "nivel": 2, "tipo_frente": "esquadrias",     "nome": "Esquadrias", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.8.1", "parent_id": "1.8", "uid": "casa50-esq-jan-0022", "nivel": 3, "tipo_frente": "esquadrias", "nome": "Janelas de alumínio", "unidade": "un", "quantidade": 4.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.8.2", "parent_id": "1.8", "uid": "casa50-esq-por-0023", "nivel": 3, "tipo_frente": "esquadrias", "nome": "Portas internas", "unidade": "un", "quantidade": 6.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.9", "parent_id": "1", "uid": "casa50-acb-0024", "nivel": 2, "tipo_frente": "acabamento",    "nome": "Pintura e acabamentos", "unidade": null, "quantidade": null, "frente_id": "", "local_id": null},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.9.1", "parent_id": "1.9", "uid": "casa50-acb-pin-0025", "nivel": 3, "tipo_frente": "acabamento", "nome": "Pintura de paredes", "unidade": "m²", "quantidade": 160.0, "frente_id": "", "local_id": "TERREO-GERAL"},
+    {"project_id": "casa-terreno-50m2", "eap_id": "1.9.2", "parent_id": "1.9", "uid": "casa50-acb-pis-0026", "nivel": 3, "tipo_frente": "acabamento", "nome": "Piso cerâmico", "unidade": "m²", "quantidade": 42.0, "frente_id": "", "local_id": "TERREO-GERAL"}
+  ]
+}
+

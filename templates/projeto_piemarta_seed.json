@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "project_id": "default",
+    "nome": "Piemarta — Edifício Residencial",
+    "tipo_obra": "apartamento",
+    "area_m2": 1200,
+    "metodo_construtivo": "concreto_armado",
+    "regiao": null,
+    "nota": "Seed canonico F1.2 (raiz unica). A migracao PRESERVA os uids do banco atual e grava eap_id_history; estes uids sao ilustrativos (na importacao de banco vazio, gerar uuid4). 'Vigas baldrame' (1.1.2) foi corrigido de estrutura para fundacao. Root tipo 'projeto' agrupa as frentes.",
+    "total_nos": 10
+  },
+  "nodes": [
+    {"project_id": "default", "eap_id": "1",   "parent_id": null,  "uid": "piemarta-raiz-0001", "nivel": 1, "tipo_frente": "projeto",    "nome": "Piemarta — Edifício Residencial", "unidade": null, "quantidade": null, "frente_id": "",   "local_id": null},
+
+    {"project_id": "default", "eap_id": "1.1",     "parent_id": "1", "uid": "piemarta-fund-0002", "nivel": 2, "tipo_frente": "fundacao",   "nome": "Fundações",                    "unidade": null, "quantidade": null, "frente_id": "FR-001", "local_id": "BLOCO-A"},
+    {"project_id": "default", "eap_id": "1.1.1",   "parent_id": "1.1", "uid": "piemarta-sap-0003", "nivel": 3, "tipo_frente": "fundacao",   "nome": "Sapatas",                       "unidade": "conj", "quantidade": null, "frente_id": "FR-001", "local_id": "BLOCO-A"},
+    {"project_id": "default", "eap_id": "1.1.1.1", "parent_id": "1.1.1", "uid": "piemarta-sap-esc-0004", "nivel": 4, "tipo_frente": "fundacao", "nome": "Escavação de sapatas",           "unidade": "m³", "quantidade": 1280.0, "frente_id": "FR-001", "local_id": "BLOCO-A"},
+    {"project_id": "default", "eap_id": "1.1.1.2", "parent_id": "1.1.1", "uid": "piemarta-sap-con-0005", "nivel": 4, "tipo_frente": "fundacao", "nome": "Concreto das sapatas",           "unidade": "m³", "quantidade": 240.0,  "frente_id": "FR-001", "local_id": "BLOCO-A"},
+    {"project_id": "default", "eap_id": "1.1.2",   "parent_id": "1.1", "uid": "piemarta-vig-0006", "nivel": 3, "tipo_frente": "fundacao",   "nome": "Vigas baldrame",                "unidade": "conj", "quantidade": null, "frente_id": "FR-001", "local_id": "BLOCO-A"},
+    {"project_id": "default", "eap_id": "1.1.2.1", "parent_id": "1.1.2", "uid": "piemarta-vig-con-0007", "nivel": 4, "tipo_frente": "fundacao", "nome": "Concreto das vigas baldrame",   "unidade": "m³", "quantidade": 86.0,   "frente_id": "FR-001", "local_id": "BLOCO-A"},
+
+    {"project_id": "default", "eap_id": "1.2",     "parent_id": "1", "uid": "piemarta-est-0008", "nivel": 2, "tipo_frente": "estrutura",  "nome": "Estrutura",                    "unidade": null, "quantidade": null, "frente_id": "FR-002", "local_id": "BLOCO-B"},
+    {"project_id": "default", "eap_id": "1.2.1",   "parent_id": "1.2", "uid": "piemarta-pil-0009", "nivel": 3, "tipo_frente": "estrutura",  "nome": "Pilares",                      "unidade": "conj", "quantidade": null, "frente_id": "FR-002", "local_id": "BLOCO-B"},
+    {"project_id": "default", "eap_id": "1.2.1.1", "parent_id": "1.2.1", "uid": "piemarta-pil-con-0010", "nivel": 4, "tipo_frente": "estrutura", "nome": "Concreto dos pilares",          "unidade": "m³", "quantidade": 520.0,  "frente_id": "FR-002", "local_id": "BLOCO-B"}
+  ]
+}

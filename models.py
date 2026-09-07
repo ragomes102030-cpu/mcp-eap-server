@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -116,18 +117,23 @@ _NORMALIZACAO_UNIDADES = {
 # classificação estável para consultas e relatórios — o LLM não inventa valores.
 TIPOS_FRENTE_VALIDOS = {
     "projeto", "preliminares", "fundacao", "estrutura", "alvenaria",
-    "cobertura", "instalacoes", "esquadrias", "revestimento", "pintura",
-    "acabamento", "infraestrutura", "paisagismo",
+    "cobertura", "eletrica", "hidrossanitaria", "esquadrias",
+    "revestimento", "pintura", "acabamento",
+    "infraestrutura", "paisagismo",
 }
 
 _NORMALIZACAO_TIPOS = {
-    "fundações": "fundacao", "fundacao": "fundacao",
+    "fundações": "fundacao", "fundacao": "fundacao", "fundacoes": "fundacao",
     "estrutura": "estrutura",
     "alvenaria": "alvenaria", "alvenaria_estrutural": "alvenaria",
     "cobertura": "cobertura", "cubierta": "cobertura", "telhado": "cobertura",
-    "instalacoes": "instalacoes", "instalacoes_eletricas": "instalacoes",
-    "instalacoes_hidrossanitarias": "instalacoes", "hidrossanitaria": "instalacoes",
-    "eletrica": "instalacoes", "hidraulica": "instalacoes",
+    # F1.2/§3: 'instalacoes' foi DEPRECIADO e dividido em eletrica/hidrossanitaria.
+    "eletrica": "eletrica", "eletrico": "eletrica", "elétrica": "eletrica",
+    "instalacoes_eletricas": "eletrica",
+    "hidrossanitaria": "hidrossanitaria", "hidraulica": "hidrossanitaria",
+    "hidraulico": "hidrossanitaria", "hidráulica": "hidrossanitaria",
+    "instalacoes_hidrossanitarias": "hidrossanitaria",
+    "esgoto": "hidrossanitaria", "agua": "hidrossanitaria", "água": "hidrossanitaria",
     "esquadrias": "esquadrias", "esquinerias": "esquadrias", "esquadria": "esquadrias",
     "revestimento": "revestimento",
     "pintura": "pintura",
@@ -146,13 +152,21 @@ def normalizar_tipo_frente(tipo: str | None) -> str | None:
     """
     if not tipo:
         return None
-    t = tipo.strip().lower().replace("_", " ").strip()
+    t = tipo.strip().lower().replace("_", " ")
+    # remove acentos: "Instalações Elétricas" -> "instalacoes eletricas"
+    t = "".join(ch for ch in unicodedata.normalize("NFD", t)
+                if unicodedata.category(ch) != "Mn").strip()
     # tenta primeiro o valor canônico, depois os sinônimos normalizados
     if t.replace(" ", "_") in TIPOS_FRENTE_VALIDOS:
         return t.replace(" ", "_")
     normalizado = _NORMALIZACAO_TIPOS.get(t) or _NORMALIZACAO_TIPOS.get(t.replace(" ", "_"))
     if normalizado is not None:
         return normalizado
+    if t.replace(" ", "_") == "instalacoes":
+        raise ValueError(
+            "Tipo de frente 'instalacoes' foi DEPRECIADO e dividido em "
+            "'eletrica' e 'hidrossanitaria' (informe um deles)."
+        )
     raise ValueError(
         f"Tipo de frente '{tipo}' não reconhecido. "
         f"Válidos: {', '.join(sorted(TIPOS_FRENTE_VALIDOS))}"
@@ -1250,6 +1264,7 @@ def validar_estrutura(
             )
         for filho in filhos:
             if (nivel == 1 and filho.get("tipo_frente") and nodo.get("tipo_frente")
+                    and nodo.get("tipo_frente") != "projeto"
                     and filho["tipo_frente"] != nodo["tipo_frente"]):
                 avisos.append(
                     f"Filho '{filho['eap_id']}' (tipo {filho['tipo_frente']}) diverge "
