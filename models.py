@@ -174,6 +174,13 @@ _TURSO_TOKEN = os.environ.get("TURSO_TOKEN", "")
 
 DEFAULT_PROJECT_ID = "default"
 
+# F1.2 - transição para raiz única por obra (projeto = obra).
+# Começa DESLIGADA: validar mantém multi-raiz como aviso. Ligue (env
+# EAP_STRICT_SINGLE_ROOT=1) SOMENTE depois de migrar os projetos para raiz única.
+STRICT_SINGLE_ROOT = os.environ.get("EAP_STRICT_SINGLE_ROOT", "").strip().lower() in {
+    "1", "true", "yes",
+}
+
 
 def _normalizar_turso_url(url: str) -> str:
     """Turso novos (ex.: *.aws-us-east-1.turso.io) recusam o handshake WebSocket
@@ -1145,7 +1152,11 @@ def _executar_move(
     }
 
 
-def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
+def validar_estrutura(
+    project_id: str | None = None,
+    *,
+    strict_single_root: bool | None = None,
+) -> dict[str, Any]:
     """Percorre toda a árvore e reporta problemas de integridade.
 
     Verifica:
@@ -1210,12 +1221,17 @@ def validar_estrutura(project_id: str | None = None) -> dict[str, Any]:
     # ── Avisos semânticos (não invalidam a árvore; orientam qualidade) ──
     avisos: list[str] = []
     raizes = _raizes(project_id)
-    if len(raizes) > 1:
-        avisos.append(
-            f"Projeto tem {len(raizes)} raízes "
-            f"({', '.join(r['eap_id'] for r in raizes)}): "
-            "considere 1 raiz por obra (EAP mais legível e comparável)."
+    _strict = STRICT_SINGLE_ROOT if strict_single_root is None else strict_single_root
+    if len(todos) > 0 and len(raizes) != 1:
+        _msg_multi = (
+            f"MULTI_ROOT: projeto tem {len(raizes)} raízes "
+            f"({', '.join(r['eap_id'] for r in raizes)}); "
+            "exige 1 raiz (a obra) por projeto."
         )
+        if _strict:
+            problemas.append(_msg_multi)
+        else:
+            avisos.append(_msg_multi)
     _UNIDADES_MEDIDA = {"m²", "m³", "ml", "kg"}
 
     def _semantica(nodo: dict[str, Any], nivel: int) -> None:
