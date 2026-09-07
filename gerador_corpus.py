@@ -50,6 +50,7 @@ FASES = [
     ]),
     ("Instalações elétricas", "eletrica", [
         ("Pontos elétricos", "pt", 55.0),
+        ("Quadros e disjuntores", "un", 2.0),
     ]),
     ("Instalações hidrossanitárias", "hidrossanitaria", [
         ("Pontos hidráulicos", "pt", 30.0),

@@ -83,7 +83,7 @@ async def main() -> None:
                 await s.initialize()
                 tools = await s.list_tools()
                 nomes = sorted(t.name for t in tools.tools)
-                ok(len(nomes) == 15, f"tools/list expoe 15 tools (tem {len(nomes)})")
+                ok(len(nomes) == 16, f"tools/list expoe 16 tools (tem {len(nomes)})")
                 ok("move_eap_node" in nomes and "validar_estrutura" in nomes,
                    "tools criticas presentes (move_eap_node, validar_estrutura)")
 

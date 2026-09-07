@@ -114,6 +114,19 @@ CREATE INDEX IF NOT EXISTS ix_history_de  ON eap_id_history(eap_id_de);
 
 UNIDADES_VALIDAS = {"m²", "m³", "ml", "un", "kg", "conj", "vb", "pt"}
 
+# F1.5 - matriz unidade pai x unidade filho (RICS NRM). Só soma quem está
+# na mesma unidade; 'conj' agrupa 'conj' ou 'un'. Fora disso = UNIDADE_INCOMPATIVEL.
+UNIDADE_FILHOS_PERMITIDOS = {
+    "conj": {"un", "conj"},
+    "m³": {"m³"},
+    "m²": {"m²"},
+    "ml": {"ml"},
+    "un": {"un"},
+    "pt": {"pt"},
+    "vb": {"vb"},
+    "kg": {"kg"},
+}
+
 _NORMALIZACAO_UNIDADES = {
     "m2": "m²", "m3": "m³", "m²": "m²", "m³": "m³",
     "ml": "ml", "un": "un", "kg": "kg", "conj": "conj", "vb": "vb", "pt": "pt",
@@ -851,6 +864,35 @@ def listar_pacotes_sem_dono(
     return sem_dono
 
 
+def resumo_quantitativos(
+    project_id: str | None = None,
+    tipo_frente: str | None = None,
+) -> list[dict[str, Any]]:
+    """Agrupa quantitativos por (tipo_frente, unidade) — SÓ folhas, null ignorado.
+
+    Nunca mistura unidades: cada grupo tem uma única unidade (RICS NRM).
+    """
+    todos = listar_todos(project_id)
+    sao_pais = {n["parent_id"] for n in todos if n.get("parent_id") is not None}
+    folhas = [n for n in todos if n["eap_id"] not in sao_pais]
+    grupos: dict[tuple[str, str], dict[str, Any]] = {}
+    for f in folhas:
+        unid = f.get("unidade")
+        if not unid:
+            continue
+        tf = f.get("tipo_frente") or "sem_tipo"
+        if tipo_frente and tf != tipo_frente:
+            continue
+        chave = (tf, unid)
+        g = grupos.setdefault(chave, {"tipo_frente": tf, "unidade": unid,
+                                      "soma": 0.0, "folhas": 0})
+        q = f.get("quantidade")
+        if q is not None:
+            g["soma"] = round(g["soma"] + float(q), 6)
+        g["folhas"] += 1
+    return sorted(grupos.values(), key=lambda x: (x["tipo_frente"], x["unidade"]))
+
+
 def _ultimo_segmento(eap_id: str) -> int:
     """Extrai o último segmento numérico de um código '1.2.3' -> 3."""
     if not eap_id:
@@ -1403,6 +1445,20 @@ def validar_estrutura(
                 f"FANTASMA: folha '{nodo['eap_id']}' ('{nome[:40]}') sem quantidade "
                 "e sem nao_aplicavel."
             )
+        if len(filhos) == 1:
+            avisos.append(
+                f"FILHO_UNICO: nó '{nodo['eap_id']}' ('{nome[:30]}') com 1 único "
+                "filho — decomposição pressupõe ≥ 2."
+            )
+        _permitidas = UNIDADE_FILHOS_PERMITIDOS.get(nodo.get("unidade"))
+        if filhos and _permitidas:
+            for filho in filhos:
+                if filho.get("unidade") and filho["unidade"] not in _permitidas:
+                    avisos.append(
+                        f"UNIDADE_INCOMPATIVEL: pai '{nodo['eap_id']}' "
+                        f"({nodo.get('unidade')}) com filho '{filho['eap_id']}' "
+                        f"({filho['unidade']})."
+                    )
         for filho in filhos:
             if (nivel == 1 and filho.get("tipo_frente") and nodo.get("tipo_frente")
                     and nodo.get("tipo_frente") != "projeto"

@@ -79,7 +79,7 @@ async def main() -> None:
                 await s.initialize()
                 tools = await s.list_tools()
                 nomes = sorted(t.name for t in tools.tools)
-                ok(len(nomes) == 15, f"tools/list expoe 15 tools (tem {len(nomes)})")
+                ok(len(nomes) == 16, f"tools/list expoe 16 tools (tem {len(nomes)})")
                 ok("criar_projeto" in nomes and "atualizar_projeto" in nomes,
                    "tools de projeto presentes")
 

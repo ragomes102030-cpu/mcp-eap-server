@@ -102,6 +102,12 @@ async def main() -> None:
                     "project_id": "OBRA-CLEAN", "nome": "Obra Limpa",
                     "tipo_obra": "apartamento", "area_m2": 80.0,
                 })
+                # projeto "limpo" (raiz automatica [projeto], 2 fases x 2 folhas,
+                # nomes capitalizados, folhas com dono e quantidade)
+                await call("criar_projeto", {
+                    "project_id": "OBRA-CLEAN", "nome": "Obra Limpa",
+                    "tipo_obra": "apartamento", "area_m2": 80.0,
+                })
                 await call("criar_eap_node", {
                     "project_id": "OBRA-CLEAN", "nome": "Estrutura", "parent_id": "1",
                     "frente_id": "FR-A", "local_id": "AP-1", "tipo_frente": "estrutura",
@@ -111,13 +117,33 @@ async def main() -> None:
                     "parent_id": "1.1", "frente_id": "FR-A", "local_id": "AP-1",
                     "tipo_frente": "estrutura", "unidade": "m³", "quantidade": 12.0,
                 })
-                await call("definir_criterio", {"eap_id": "1.1.1", "project_id": "OBRA-CLEAN",
-                                                "responsavel": "Equipe de estrutura"})
+                await call("criar_eap_node", {
+                    "project_id": "OBRA-CLEAN", "nome": "Formas dos pilares",
+                    "parent_id": "1.1", "frente_id": "FR-A", "local_id": "AP-1",
+                    "tipo_frente": "estrutura", "unidade": "m²", "quantidade": 40.0,
+                })
+                await call("criar_eap_node", {
+                    "project_id": "OBRA-CLEAN", "nome": "Fundações", "parent_id": "1",
+                    "frente_id": "FR-B", "local_id": "AP-1", "tipo_frente": "fundacao",
+                })
+                await call("criar_eap_node", {
+                    "project_id": "OBRA-CLEAN", "nome": "Concreto das sapatas",
+                    "parent_id": "1.2", "frente_id": "FR-B", "local_id": "AP-1",
+                    "tipo_frente": "fundacao", "unidade": "m³", "quantidade": 10.0,
+                })
+                await call("criar_eap_node", {
+                    "project_id": "OBRA-CLEAN", "nome": "Armação das sapatas",
+                    "parent_id": "1.2", "frente_id": "FR-B", "local_id": "AP-1",
+                    "tipo_frente": "fundacao", "unidade": "kg", "quantidade": 150.0,
+                })
+                for _e in ("1.1.1", "1.1.2", "1.2.1", "1.2.2"):
+                    await call("definir_criterio", {"eap_id": _e, "project_id": "OBRA-CLEAN",
+                                                    "responsavel": "Equipe de obra"})
                 valc = await call("validar_estrutura", {"project_id": "OBRA-CLEAN"})
                 rc = valc["resumo"]
-                ok(rc["total_nos"] == 3 and rc["total_problemas"] == 0
+                ok(rc["total_nos"] == 7 and rc["total_problemas"] == 0
                    and rc["arvore_valida"] is True,
-                   "OBRA-CLEAN: 3 nos, 0 problemas")
+                   "OBRA-CLEAN: 7 nos, 0 problemas")
                 ok(rc["total_avisos"] == 0, f"OBRA-CLEAN: 0 avisos (tem {rc['total_avisos']})")
                 log("  AVISOS CLEAN: " + json.dumps(valc["avisos"], ensure_ascii=False))
 
@@ -134,5 +160,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     asyncio.run(main())

@@ -2,7 +2,7 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (13 tools):
+Ferramentas expostas (16 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
@@ -15,6 +15,7 @@ Ferramentas expostas (13 tools):
   * atualizar_projeto      atualiza metadados de um projeto (obra)
   * definir_criterio       define dicionario do pacote e dono/OBS (responsavel)
   * pacotes_sem_dono       lista pacotes (folhas) sem responsavel
+  * resumo_quantitativos   quantitativos por (tipo_frente, unidade), so folhas
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
   * listar_templates       lista exemplos reais de EAP (templates)
@@ -557,6 +558,25 @@ def pacotes_sem_dono(
             "total": len(nos),
             "nos": [schemas.EAPNodeOutput.model_validate(n).model_dump() for n in nos],
         }
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def resumo_quantitativos(
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.", examples=["default"])] = None,
+    tipo_frente: Annotated[str | None, Field(description="Filtra por tipo de frente (ex.: fundacao).", examples=["fundacao"])] = None,
+) -> dict[str, Any]:
+    """Resumo de quantitativos por (tipo_frente, unidade).
+
+    Considera SÓ folhas; ``quantidade=null`` é ignorado; nunca mistura unidades
+    (RICS NRM). ``quantidade=0`` conta como zero real (sem FANTASMA).
+    """
+
+    def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        grupos = models.resumo_quantitativos(pid, tipo_frente)
+        return {"project_id": pid, "total_grupos": len(grupos), "grupos": grupos}
 
     return _seguro(_executar)
 
