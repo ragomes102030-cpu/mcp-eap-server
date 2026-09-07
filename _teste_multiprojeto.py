@@ -79,7 +79,8 @@ async def main() -> None:
                 await s.initialize()
                 tools = await s.list_tools()
                 nomes = sorted(t.name for t in tools.tools)
-                ok(len(nomes) == 17, f"tools/list expoe 17 tools (tem {len(nomes)})")
+                ok(len(nomes) == 18, f"tools/list expoe 18 tools (tem {len(nomes)})")
+                ok("buscar_eap_node" in nomes, "buscar_eap_node presente (Fase 2 §3)")
                 ok("criar_projeto" in nomes and "atualizar_projeto" in nomes,
                    "tools de projeto presentes")
 

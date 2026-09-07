@@ -248,6 +248,30 @@ class ListarPorTipoFrenteOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BuscarEAPNodeOutput(BaseModel):
+    """Envelope de resposta do ``buscar_eap_node``."""
+
+    termo: str = Field(
+        title="Termo buscado",
+        description="Termo exatamente como foi solicitado.",
+    )
+    total: int = Field(
+        title="Total de nós",
+        description="Quantidade de nós encontrados (0 quando nada corresponde).",
+        ge=0,
+    )
+    nos: list[EAPNodeOutput] = Field(
+        title="Nós encontrados",
+        description=(
+            "Nós cujo nome/eap_id/frente_id/local_id/responsavel contém o "
+            "termo (acento e caixa ignorados), ordenados por EAP_ID."
+        ),
+        default_factory=list,
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ValidarEstruturaOutput(BaseModel):
     """Resultado da validação de integridade da árvore."""
 

@@ -1106,6 +1106,43 @@ def listar_por_tipo_frente(
     return rows
 
 
+def _chave_busca(texto: Any) -> str:
+    """Chave de busca: caixa normalizada e sem acento (§3 do prompt).
+
+    'ESCAVAÇÃO' -> 'escavacao'; 'm³' preserva o sobrescrito (não é acento).
+    """
+    if texto is None:
+        return ""
+    t = unicodedata.normalize("NFD", str(texto).strip().lower())
+    return "".join(ch for ch in t if unicodedata.category(ch) != "Mn")
+
+
+def buscar_eap_node(
+    termo: str,
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Busca nós por termo em nome, eap_id, frente_id, local_id e responsavel.
+
+    Substring com acento e caixa ignorados: ``escavacao`` acha
+    ``ESCAVAÇÃO SAPATAS`` (§3). Sem ``project_id`` explícito, assume o
+    projeto default (nunca cruza projetos). Ordenado por EAP_ID.
+    """
+    if not (termo or "").strip():
+        return []
+    pid = project_id if project_id is not None else DEFAULT_PROJECT_ID
+    chave = _chave_busca(termo)
+    achados = [
+        n for n in listar_todos(pid)
+        if chave in _chave_busca(n.get("nome"))
+        or chave in _chave_busca(n.get("eap_id"))
+        or chave in _chave_busca(n.get("frente_id"))
+        or chave in _chave_busca(n.get("local_id"))
+        or chave in _chave_busca(n.get("responsavel"))
+    ]
+    achados.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+    return achados
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Árvore e validação
 # ─────────────────────────────────────────────────────────────────────────────

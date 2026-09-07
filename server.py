@@ -2,7 +2,7 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (17 tools):
+Ferramentas expostas (18 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
@@ -19,6 +19,7 @@ Ferramentas expostas (17 tools):
   * registrar_retrabalho   cria irmao R{n} de retrabalho (origem linkada)
   * validar_estrutura      detecta orfaos, duplicidades e NIVEL inconsistente
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
+  * buscar_eap_node        busca nos por termo (acento e caixa ignorados)
   * listar_templates       lista exemplos reais de EAP (templates)
 
 Variaveis de ambiente:
@@ -321,6 +322,28 @@ def listar_por_tipo_frente(
         nodes = models.listar_por_tipo_frente(tipo_frente, pid)
         return schemas.ListarPorTipoFrenteOutput(
             tipo_frente=tipo_frente, total=len(nodes),
+            nos=[schemas.EAPNodeOutput.model_validate(n) for n in nodes],
+        ).model_dump()
+
+    return _seguro(_executar)
+
+
+@mcp.tool()
+def buscar_eap_node(
+    termo: Annotated[str, Field(description="Texto a procurar em nome, EAP_ID, frente, local ou responsável. Acento e caixa são ignorados: 'escavacao' acha 'Escavação Sapatas'.", examples=["escavacao"], min_length=1)],
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
+) -> dict[str, Any]:
+    """Busca nós por termo (substring) em nome, EAP_ID, frente_id, local_id
+    ou responsável.
+
+    Retorna envelope ``{termo, total, nos}``. Lista vazia é resultado válido.
+    """
+
+    def _executar() -> dict[str, Any]:
+        pid = project_id or models.DEFAULT_PROJECT_ID
+        nodes = models.buscar_eap_node(termo, pid)
+        return schemas.BuscarEAPNodeOutput(
+            termo=termo, total=len(nodes),
             nos=[schemas.EAPNodeOutput.model_validate(n) for n in nodes],
         ).model_dump()
 
