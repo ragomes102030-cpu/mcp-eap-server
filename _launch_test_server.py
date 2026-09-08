@@ -1,7 +1,6 @@
 """Lanca o server.py com banco sqlite TEMPORARIO (isolado), codigo atual."""
 from __future__ import annotations
 
-import os
 import pathlib
 import sys
 import tempfile
