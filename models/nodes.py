@@ -463,6 +463,16 @@ def montar_arvore(
     ganham ``truncado=True`` e ``total_descendentes`` no lugar de ``filhos``,
     para evitar respostas gigantes em árvores grandes.
 
+    Performance: busca TODOS os nós do escopo numa única query
+    (``listar_todos``) e monta a árvore em memória — evita N+1 (uma query
+    por nó) que antes deixava obras com milhares de nós lentas (~1,3s para
+    ~2.400 nós; agora é da ordem de dezenas de ms, dominado pelo fetch único).
+    Os filhos são indexados por ``(project_id, parent_id)`` em vez de só
+    ``parent_id`` — isso também corrige um bug latente: chamar sem
+    ``eap_id`` e sem ``project_id`` (varrendo todos os projetos) antes
+    montava os filhos de cada raiz olhando só o projeto 'default',
+    devolvendo filhos errados (ou vazios) pras demais obras.
+
     Erros (``ValueError``): nó inexistente ou EAP vazia.
     """
     if eap_id:
@@ -478,19 +488,31 @@ def montar_arvore(
     if not roots:
         raise ValueError("A EAP está vazia — nenhum nó para exibir.")
 
-    def _contar_descendentes(eap_id_nodo: str) -> int:
+    # Uma única leitura de todo o escopo; a árvore é montada em memória a
+    # partir daqui (zero queries adicionais por nó).
+    todos = listar_todos(scope)
+    filhos_por_pai: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    for n in todos:
+        filhos_por_pai.setdefault((n["project_id"], n["parent_id"]), []).append(n)
+    for lista in filhos_por_pai.values():
+        lista.sort(key=lambda n: _chave_ordem(n["eap_id"]))
+
+    def _filhos(nodo: dict[str, Any]) -> list[dict[str, Any]]:
+        return filhos_por_pai.get((nodo["project_id"], nodo["eap_id"]), [])
+
+    def _contar_descendentes(nodo: dict[str, Any]) -> int:
         total = 0
-        for f in listar_filhos(eap_id_nodo, scope):
-            total += 1 + _contar_descendentes(f["eap_id"])
+        for f in _filhos(nodo):
+            total += 1 + _contar_descendentes(f)
         return total
 
     def _montar(nodo: dict[str, Any], profundidade_atual: int) -> dict[str, Any]:
         no = dict(nodo)
-        filhos = listar_filhos(nodo["eap_id"], scope)
+        filhos = _filhos(nodo)
         if max_profundidade is not None and profundidade_atual >= max_profundidade:
             if filhos:
                 no["truncado"] = True
-                no["total_descendentes"] = _contar_descendentes(nodo["eap_id"])
+                no["total_descendentes"] = _contar_descendentes(nodo)
             no["filhos"] = []
         else:
             no["filhos"] = [_montar(f, profundidade_atual + 1) for f in filhos]
