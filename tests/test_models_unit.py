@@ -1,4 +1,4 @@
-"""Testes de unidade da camada de dados (models.py) em banco temporario."""
+"""Testes de unidade da camada de dados (pacote models/) em banco temporario."""
 from __future__ import annotations
 
 import sqlite3

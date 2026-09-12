@@ -17,12 +17,14 @@ SQLite local com fallback para **Turso/libSQL** em produção.
 
 | Arquivo | Papel |
 |---|---|
-| `models.py` | Camada de dados: schema, DAO, árvore, validação, migração e idempotência |
+| `models/` | Camada de dados (pacote): `db.py` (conexão/schema/migrações), `validacao.py` (vocabulário fechado), `idempotencia.py`, `nodes.py` (CRUD de nós/árvore/mover), `projetos.py`, `templates.py`. `__init__.py` reexporta tudo — continue usando `import models` / `models.inserir_nodo(...)` normalmente |
 | `schemas.py` | Schemas Pydantic de entrada/saída |
 | `server.py` | FastMCP: 11 tools, wrapper de erro `_seguro`, idempotência e seeds |
 
 **Camadas rígidas**: `server.py` (apresentação MCP) nunca toca SQL direto;
-`models.py` (dados) nunca importa `mcp`/`schemas`. Mantenha essa separação.
+`models/` (dados) nunca importa `mcp`/`schemas`. Dentro de `models/`,
+`nodes.py` não importa `projetos.py` (o inverso sim, via `criar_projeto`) —
+evite reintroduzir esse ciclo. Mantenha essa separação.
 
 ## Ferramentas expostas (13)
 
@@ -74,11 +76,13 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
   `eap.db` antes; ele é efêmero e não versionado — `.gitignore`).
 - Validar o servidor de verdade: `python server.py` e handshake MCP
   (`initialize` → 200) ou `call_tool` das tools via `server.mcp._tool_manager`.
-- Após mudanças, sempre `python -m py_compile models.py schemas.py server.py`.
+- Após mudanças, sempre `python -m py_compile models/*.py schemas.py server.py`.
 - Cobertura mínima sugerida: criar→atualizar→get→deletar→validar + idempotência +
   migração.
 - **Testes versionados**: `python -m pytest` roda a suíte (`tests/`): unit da
-  camada de dados (gate de cobertura 70% em `models.py`) + 3 baterias
+  camada de dados (gate de cobertura 70% em `models/`, hoje **conhecido por
+  falhar** quando rodado só com `test_models_unit.py`+`test_corpus.py` — ver
+  histórico de CI, é pré-existente e não bloqueia a suíte completa) + 3 baterias
   funcionais (servidor isolado). O CI (`.github/workflows/ci.yml`) executa
   ruff (F/E9), py_compile, unit+cov e as baterias a cada push/PR.
 - **Corpus sintético**: `gerador_corpus.py` gera N obras (ex.: 300) com EAP
@@ -91,7 +95,7 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
 - **Fase 1 (aqui)**: dados da EAP, CRUD, árvore, validação, idempotência, templates
   como **referência histórica** (só consulta).
 - **Fase 2 (futuro)**: sugeridor/inferência de EAP a partir dos templates, orçamento,
-  quantitativos. Não adicione lógica de sugestão no `server.py`/`models.py` ainda.
+  quantitativos. Não adicione lógica de sugestão no `server.py`/`models/` ainda.
 
 Arquivos `orquestrador.py`, `diag_map.py`, `diag_p0.py` são **rascunhos de Fase 2**,
 fora do versionamento — não os edite nem os includa em commits nesta Fase 1.
