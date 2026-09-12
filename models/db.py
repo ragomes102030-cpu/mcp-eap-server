@@ -299,25 +299,27 @@ _COLUNAS_F16 = (
 )
 
 
-class MigracaoError(RuntimeError):
-    """Erro real (não 'coluna já existe') ao aplicar uma migração de schema."""
-
-
 def _coluna_ja_existe(exc: Exception) -> bool:
-    """True só quando a exceção é 'duplicate column name' (SQLite/Turso).
-
-    Qualquer outro erro (permissão, sintaxe, conexão) é re-levantado — não
-    fica mais mascarado por um ``except Exception: pass`` genérico.
-    """
+    """True quando a exceção indica 'coluna/índice já existe' (SQLite/Turso)."""
     msg = str(exc).lower()
     return "duplicate column" in msg or "already exists" in msg
 
 
 def _alter_table_idempotente(sql: str) -> None:
-    """Roda um ``ALTER TABLE ... ADD COLUMN`` tolerando só 'coluna já existe'.
+    """Roda um ``ALTER TABLE ... ADD COLUMN`` (ou índice) tolerando erros.
 
-    Qualquer outro erro (ex.: banco sem permissão de escrita, sintaxe errada)
-    propaga como ``MigracaoError`` em vez de ser engolido silenciosamente.
+    Startup nunca pode travar por causa de uma migração: ``init_db()`` roda
+    na importação do módulo, antes do servidor subir — uma exceção aqui
+    derruba o processo inteiro antes mesmo dele aceitar requisições.
+
+    Por isso: 'coluna/índice já existe' é o caminho normal e não loga nada
+    (é o esperado em todo restart, já que a coluna foi criada num deploy
+    anterior). Qualquer OUTRO erro é logado bem alto em stderr (pra não ficar
+    invisível como no ``except Exception: pass`` de antes) mas **não** é
+    re-levantado — evita que uma diferença de mensagem de erro entre SQLite
+    local e Turso (não testável localmente sem um Turso real) derrube o
+    deploy em produção. Quem quiser tratamento estrito pode inspecionar o
+    log ou chamar a query manualmente.
     """
     try:
         with _connect() as conn:
@@ -325,7 +327,13 @@ def _alter_table_idempotente(sql: str) -> None:
             conn.commit()
     except Exception as exc:
         if not _coluna_ja_existe(exc):
-            raise MigracaoError(f"Falha ao rodar migração {sql!r}: {exc}") from exc
+            import sys
+            print(
+                f"[models.db] AVISO: migração {sql!r} falhou de um jeito "
+                f"inesperado (não é 'já existe'): {exc!r}. Prosseguindo sem "
+                "aplicar essa migração — verifique o schema manualmente.",
+                file=sys.stderr, flush=True,
+            )
 
 
 def _migrar_colunas_texto() -> None:
@@ -358,15 +366,9 @@ def _migrar_uid() -> None:
             )
             conn.commit()
 
-    try:
-        with _connect() as conn:
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ix_eap_node_uid ON eap_node(uid)"
-            )
-            conn.commit()
-    except Exception as exc:
-        if "already exists" not in str(exc).lower():
-            raise MigracaoError(f"Falha ao criar índice de uid: {exc}") from exc
+    _alter_table_idempotente(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_eap_node_uid ON eap_node(uid)"
+    )
 
 
 def _migrar_eap_node_para_multiprojeto() -> None:
