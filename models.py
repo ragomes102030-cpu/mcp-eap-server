@@ -670,21 +670,38 @@ def atualizar_projeto(project_id: str, **campos: Any) -> dict[str, Any]:
     return buscar_projeto(project_id)  # type: ignore[return-value]
 
 
-def listar_projetos() -> list[dict[str, Any]]:
-    """Lista todos os projetos com metadados e a contagem de nós (0 se vazio)."""
+def contar_projetos() -> int:
+    """Retorna o total de projetos cadastrados (para metadados de paginação)."""
     with _connect() as conn:
-        cursor = conn.execute(
-            """
-            SELECT p.project_id, p.nome, p.tipo_obra, p.area_m2,
-                   p.metodo_construtivo, p.regiao, p.cliente, p.ativo,
-                   p.created_at, p.updated_at,
-                   COUNT(n.project_id) AS total_nos
-            FROM eap_project p
-            LEFT JOIN eap_node n ON n.project_id = p.project_id
-            GROUP BY p.project_id
-            ORDER BY p.project_id
-            """
-        )
+        cursor = conn.execute("SELECT COUNT(*) AS n FROM eap_project")
+        row = cursor.fetchone()
+    return row["n"] if row else 0
+
+
+def listar_projetos(
+    limit: int | None = None, offset: int = 0
+) -> list[dict[str, Any]]:
+    """Lista projetos com metadados e a contagem de nós (0 se vazio).
+
+    ``limit``/``offset`` paginam o resultado (ordenado por ``project_id``).
+    Sem ``limit``, devolve todos — mantém compatibilidade com chamadas antigas.
+    """
+    sql = """
+        SELECT p.project_id, p.nome, p.tipo_obra, p.area_m2,
+               p.metodo_construtivo, p.regiao, p.cliente, p.ativo,
+               p.created_at, p.updated_at,
+               COUNT(n.project_id) AS total_nos
+        FROM eap_project p
+        LEFT JOIN eap_node n ON n.project_id = p.project_id
+        GROUP BY p.project_id
+        ORDER BY p.project_id
+    """
+    params: list[Any] = []
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([int(limit), int(offset)])
+    with _connect() as conn:
+        cursor = conn.execute(sql, tuple(params))
     return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
 
 
@@ -1169,12 +1186,18 @@ def _raizes(project_id: str | None = None) -> list[dict[str, Any]]:
 def montar_arvore(
     eap_id: str | None = None,
     project_id: str | None = None,
+    max_profundidade: int | None = None,
 ) -> list[dict[str, Any]]:
     """Monta a(s) árvore(s) aninhada(s) e retorna uma lista de raízes.
 
     Cada raiz carrega seus dados + uma chave ``filhos`` com os sub-nós
     (recursivo). Chamado sem ``eap_id`` devolve todas as raízes do projeto;
     com ``eap_id`` devolve a subárvore enraizada nesse nó (1 elemento).
+
+    ``max_profundidade`` limita quantos níveis de filhos são expandidos
+    (1 = só a raiz, sem filhos; None = sem limite). Nós cortados pelo limite
+    ganham ``truncado=True`` e ``total_descendentes`` no lugar de ``filhos``,
+    para evitar respostas gigantes em árvores grandes.
 
     Erros (``ValueError``): nó inexistente ou EAP vazia.
     """
@@ -1191,12 +1214,25 @@ def montar_arvore(
     if not roots:
         raise ValueError("A EAP está vazia — nenhum nó para exibir.")
 
-    def _montar(nodo: dict[str, Any]) -> dict[str, Any]:
+    def _contar_descendentes(eap_id_nodo: str) -> int:
+        total = 0
+        for f in listar_filhos(eap_id_nodo, scope):
+            total += 1 + _contar_descendentes(f["eap_id"])
+        return total
+
+    def _montar(nodo: dict[str, Any], profundidade_atual: int) -> dict[str, Any]:
         no = dict(nodo)
-        no["filhos"] = [_montar(f) for f in listar_filhos(nodo["eap_id"], scope)]
+        filhos = listar_filhos(nodo["eap_id"], scope)
+        if max_profundidade is not None and profundidade_atual >= max_profundidade:
+            if filhos:
+                no["truncado"] = True
+                no["total_descendentes"] = _contar_descendentes(nodo["eap_id"])
+            no["filhos"] = []
+        else:
+            no["filhos"] = [_montar(f, profundidade_atual + 1) for f in filhos]
         return no
 
-    return [_montar(r) for r in roots]
+    return [_montar(r, 1) for r in roots]
 
 
 def mover_nodo(
@@ -1647,10 +1683,15 @@ def listar_templates(
     projeto_tipo: str | None = None,
     area_m2: float | None = None,
     metodo_construtivo: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Lista templates com filtros opcionais."""
+    """Lista templates com filtros opcionais e paginação (``limit``/``offset``).
+
+    Sem ``limit``, devolve todos — mantém compatibilidade com chamadas antigas.
+    """
     where = []
-    params = []
+    params: list[Any] = []
     if projeto_tipo:
         where.append("projeto_tipo = ?")
         params.append(projeto_tipo)
@@ -1667,10 +1708,42 @@ def listar_templates(
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY projeto_tipo, eap_node"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([int(limit), int(offset)])
 
     with _connect() as conn:
         cursor = conn.execute(sql, tuple(params))
     return [dict(r) if not isinstance(r, dict) else r for r in cursor.fetchall()]
+
+
+def contar_templates_filtrados(
+    projeto_tipo: str | None = None,
+    area_m2: float | None = None,
+    metodo_construtivo: str | None = None,
+) -> int:
+    """Conta templates que casam com os mesmos filtros de ``listar_templates``."""
+    where = []
+    params: list[Any] = []
+    if projeto_tipo:
+        where.append("projeto_tipo = ?")
+        params.append(projeto_tipo)
+    if area_m2 is not None:
+        where.append("(area_m2_min <= ? OR area_m2_min IS NULL)")
+        params.append(area_m2)
+        where.append("(area_m2_max >= ? OR area_m2_max IS NULL)")
+        params.append(area_m2)
+    if metodo_construtivo:
+        where.append("metodo_construtivo = ?")
+        params.append(metodo_construtivo)
+
+    sql = "SELECT COUNT(*) AS n FROM eap_template_real"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    with _connect() as conn:
+        cursor = conn.execute(sql, tuple(params))
+        row = cursor.fetchone()
+    return row["n"] if row else 0
 
 
 def contar_templates() -> int:
