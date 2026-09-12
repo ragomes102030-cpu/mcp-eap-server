@@ -214,6 +214,19 @@ class EAPNodeArvoreOutput(EAPNodeOutput):
         title="Filhos",
         description="Sub-nós hierarquicamente dependentes deste nó (recursivo).",
     )
+    truncado: Optional[bool] = Field(
+        default=None,
+        title="Truncado",
+        description=(
+            "True quando 'filhos' foi cortado por max_profundidade — use "
+            "get_eap_tree(eap_id=<este nó>) para expandir."
+        ),
+    )
+    total_descendentes: Optional[int] = Field(
+        default=None,
+        title="Total de descendentes",
+        description="Quantidade de nós na subárvore cortada (só presente se truncado=True).",
+    )
 
 
 class ArvoreEAPOutput(BaseModel):

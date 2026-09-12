@@ -40,6 +40,7 @@ from pydantic import Field
 
 import models
 import schemas
+from observability import log_tool_call
 
 mcp = FastMCP(
     name="eap-server",
@@ -58,10 +59,17 @@ mcp = FastMCP(
 )
 
 
-def _seguro(fn: Callable[[], Any]) -> dict[str, Any]:
-    """Executa fn e converte qualquer excecao em resposta de erro."""
+def _seguro(fn: Callable[[], Any], tool_name: str = "tool", **contexto: Any) -> dict[str, Any]:
+    """Executa fn, loga a chamada (início/fim/erro) e converte qualquer
+    excecao em resposta de erro.
+
+    ``tool_name`` e ``contexto`` (ex.: project_id, eap_id) alimentam o log
+    estruturado em ``observability.log_tool_call`` — nunca inclua payloads
+    completos de entrada aqui, só identificadores.
+    """
     try:
-        return fn()
+        with log_tool_call(tool_name, **contexto):
+            return fn()
     except Exception as exc:
         return schemas.ErroOutput(erro=str(exc)).model_dump()
 
@@ -71,18 +79,22 @@ def _idempotente(
     tool_name: str,
     payload: Any,
     fn: Callable[[], Any],
+    **contexto: Any,
 ) -> dict[str, Any]:
     """Executa ``fn`` com idempotência: se ``request_id`` já processado,
     devolve a resposta cacheada; senão, executa, salva e devolve.
 
     ``payload`` é o dict serializável (cache do pedido) e ``fn`` o corpo real
-    da execução da tool (que retorna o dict de saída).
+    da execução da tool (que retorna o dict de saída). A chamada é logada de
+    forma estruturada (ver ``_seguro``), incluindo se veio do cache.
     """
     if request_id:
         cacheado = models.verificar_idempotencia(request_id)
         if cacheado is not None:
+            with log_tool_call(tool_name, cache_hit=True, **contexto):
+                pass
             return cacheado
-    resultado = _seguro(fn)
+    resultado = _seguro(fn, tool_name, **contexto)
     if request_id:
         models.salvar_idempotencia(request_id, tool_name, payload, resultado)
     return resultado
@@ -275,22 +287,27 @@ def get_eap_node(
                 return saida
         return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "get_eap_node")
 
 
 @mcp.tool()
 def get_eap_tree(
     eap_id: Annotated[str | None, Field(description="Opcional: subárvore deste nó; omitido = árvore inteira.", examples=["1"])] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
+    max_profundidade: Annotated[int | None, Field(description="Limita quantos níveis de filhos são expandidos (1 = só a raiz). Omitido = sem limite. Use para árvores grandes: nós cortados vêm com truncado=True e total_descendentes, e podem ser expandidos chamando de novo com eap_id=<esse nó>.", ge=1)] = None,
 ) -> dict[str, Any]:
-    """Retorna a EAP em estrutura JSON aninhada (inteira ou subárvore)."""
+    """Retorna a EAP em estrutura JSON aninhada (inteira ou subárvore).
+
+    Em árvores grandes, use ``max_profundidade`` para evitar respostas
+    gigantes — os nós truncados indicam quantos descendentes têm.
+    """
 
     def _executar() -> dict[str, Any]:
         pid = project_id or models.DEFAULT_PROJECT_ID
-        raizes = models.montar_arvore(eap_id, pid)
+        raizes = models.montar_arvore(eap_id, pid, max_profundidade=max_profundidade)
         return schemas.ArvoreEAPOutput(raizes=raizes).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "get_eap_tree", project_id=project_id, eap_id=eap_id)
 
 
 @mcp.tool()
@@ -304,7 +321,7 @@ def validar_estrutura(
         resultado = models.validar_estrutura(project_id)
         return schemas.ValidarEstruturaOutput.model_validate(resultado).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "validar_estrutura")
 
 
 @mcp.tool()
@@ -325,7 +342,7 @@ def listar_por_tipo_frente(
             nos=[schemas.EAPNodeOutput.model_validate(n) for n in nodes],
         ).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "listar_por_tipo_frente")
 
 
 @mcp.tool()
@@ -347,7 +364,7 @@ def buscar_eap_node(
             nos=[schemas.EAPNodeOutput.model_validate(n) for n in nodes],
         ).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "buscar_eap_node")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -450,14 +467,27 @@ def move_eap_node(
 
 
 @mcp.tool()
-def listar_projetos() -> dict[str, Any]:
-    """Lista todos os projetos cadastrados e a contagem de nós de cada um."""
-    def _executar() -> dict[str, Any]:
-        projetos = models.listar_projetos()
-        total_nos = sum(p["total_nos"] for p in projetos)
-        return {"projetos": projetos, "total_projetos": len(projetos), "total_nos": total_nos}
+def listar_projetos(
+    limit: Annotated[int | None, Field(description="Máximo de projetos a retornar. Omitido = todos (cuidado com muitos projetos).", ge=1, le=500)] = None,
+    offset: Annotated[int, Field(description="Quantos projetos pular (para paginar).", ge=0)] = 0,
+) -> dict[str, Any]:
+    """Lista projetos cadastrados e a contagem de nós de cada um.
 
-    return _seguro(_executar)
+    Retorna ``total_projetos`` (contagem geral, ignorando paginação) junto
+    com ``projetos`` (só a página pedida) — use para saber se há mais páginas.
+    """
+    def _executar() -> dict[str, Any]:
+        projetos = models.listar_projetos(limit=limit, offset=offset)
+        total_nos = sum(p["total_nos"] for p in projetos)
+        return {
+            "projetos": projetos,
+            "total_projetos": models.contar_projetos(),
+            "retornados": len(projetos),
+            "offset": offset,
+            "total_nos": total_nos,
+        }
+
+    return _seguro(_executar, "listar_projetos", limit=limit, offset=offset)
 
 
 @mcp.tool()
@@ -499,7 +529,7 @@ def criar_projeto(
         )
         return schemas.ProjetoOutput.model_validate(projeto).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "criar_projeto")
 
 
 @mcp.tool()
@@ -524,7 +554,7 @@ def atualizar_projeto(
         )
         return schemas.ProjetoOutput.model_validate(projeto).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "atualizar_projeto")
 
 
 @mcp.tool()
@@ -565,7 +595,7 @@ def definir_criterio(
         novo = models.atualizar_nodo(node["eap_id"], {**campos, "project_id": pid})
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "definir_criterio")
 
 
 @mcp.tool()
@@ -583,7 +613,7 @@ def pacotes_sem_dono(
             "nos": [schemas.EAPNodeOutput.model_validate(n).model_dump() for n in nos],
         }
 
-    return _seguro(_executar)
+    return _seguro(_executar, "pacotes_sem_dono")
 
 
 @mcp.tool()
@@ -602,7 +632,7 @@ def resumo_quantitativos(
         grupos = models.resumo_quantitativos(pid, tipo_frente)
         return {"project_id": pid, "total_grupos": len(grupos), "grupos": grupos}
 
-    return _seguro(_executar)
+    return _seguro(_executar, "resumo_quantitativos")
 
 
 @mcp.tool()
@@ -626,7 +656,7 @@ def registrar_retrabalho(
         )
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
-    return _seguro(_executar)
+    return _seguro(_executar, "registrar_retrabalho")
 
 
 @mcp.tool()
@@ -634,13 +664,30 @@ def listar_templates(
     projeto_tipo: Annotated[str | None, Field(description="Tipo de obra p/ filtrar (casa, apartamento, reforma).", examples=["casa"])] = None,
     area_m2: Annotated[float | None, Field(description="Área construída (m²) p/ filtrar template compatível.", ge=0)] = None,
     metodo_construtivo: Annotated[str | None, Field(description="Método construtivo, ex.: alvenaria_estrutural.", examples=["alvenaria_estrutural"])] = None,
+    limit: Annotated[int | None, Field(description="Máximo de templates a retornar. Omitido = todos.", ge=1, le=500)] = None,
+    offset: Annotated[int, Field(description="Quantos templates pular (para paginar).", ge=0)] = 0,
 ) -> dict[str, Any]:
-    """Lista templates de EAP reais (referência histórica de orçamento)."""
-    def _executar() -> dict[str, Any]:
-        templates = models.listar_templates(projeto_tipo, area_m2, metodo_construtivo)
-        return {"templates": templates, "total": len(templates)}
+    """Lista templates de EAP reais (referência histórica de orçamento).
 
-    return _seguro(_executar)
+    ``total`` reflete o total que casa com os filtros (ignorando paginação);
+    ``retornados`` é o tamanho da página atual.
+    """
+    def _executar() -> dict[str, Any]:
+        templates = models.listar_templates(
+            projeto_tipo, area_m2, metodo_construtivo, limit=limit, offset=offset
+        )
+        total = models.contar_templates_filtrados(projeto_tipo, area_m2, metodo_construtivo)
+        return {
+            "templates": templates,
+            "total": total,
+            "retornados": len(templates),
+            "offset": offset,
+        }
+
+    return _seguro(
+        _executar, "listar_templates",
+        projeto_tipo=projeto_tipo, limit=limit, offset=offset,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
