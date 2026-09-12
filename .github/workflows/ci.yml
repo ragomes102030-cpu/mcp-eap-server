@@ -23,8 +23,8 @@ jobs:
 
       - name: Sintaxe e checagens basicas (F/E9)
         run: |
-          python -m py_compile models/*.py schemas.py server.py
-          python -m ruff check --select F,E9 models schemas.py server.py _launch_test_server.py tests
+          python -m py_compile models.py schemas.py server.py
+          python -m ruff check --select F,E9 models.py schemas.py server.py _launch_test_server.py tests
 
       - name: Testes de unidade (models) com gate de cobertura
         run: |
