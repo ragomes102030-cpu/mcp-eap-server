@@ -80,9 +80,8 @@ obras, inclusive `eap_id` repetidos em obras diferentes). Metadados da obra
 - Cobertura mínima sugerida: criar→atualizar→get→deletar→validar + idempotência +
   migração.
 - **Testes versionados**: `python -m pytest` roda a suíte (`tests/`): unit da
-  camada de dados (gate de cobertura 70% em `models/`, hoje **conhecido por
-  falhar** quando rodado só com `test_models_unit.py`+`test_corpus.py` — ver
-  histórico de CI, é pré-existente e não bloqueia a suíte completa) + 3 baterias
+  camada de dados (`test_models_unit.py` + `test_models_unit_extra.py`, gate
+  de cobertura 70% em `models/` — hoje ~82%) + 3 baterias
   funcionais (servidor isolado). O CI (`.github/workflows/ci.yml`) executa
   ruff (F/E9), py_compile, unit+cov e as baterias a cada push/PR.
 - **Corpus sintético**: `gerador_corpus.py` gera N obras (ex.: 300) com EAP
