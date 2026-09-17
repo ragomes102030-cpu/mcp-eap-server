@@ -123,3 +123,4 @@ referência histórica antes de popular produção.
 4. (O `Procfile` já contém o comando de start)
 
 Para persistência, defina `TURSO_URL` e `TURSO_TOKEN` nas variáveis de ambiente.
+# Updated 2026-09-17T16:01:35Z
