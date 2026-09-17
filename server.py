@@ -30,6 +30,7 @@ Variaveis de ambiente:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Annotated, Any, Callable
@@ -41,6 +42,8 @@ from pydantic import Field
 import models
 import schemas
 from observability import log_tool_call
+
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     name="eap-server",
