@@ -42,9 +42,9 @@ class CriarEAPNodeInput(BaseModel):
         examples=["BLOCO-A", "P1"],
     )
     tipo_frente: str = Field(
-        default="",
+        ...,
         title="Tipo de frente",
-        description="Classificação do tipo de serviço, ex.: alvenaria, estrutura, fundacao.",
+        description="Classificação do tipo de serviço, ex.: alvenaria, estrutura, fundacao. Obrigatório.",
         examples=["fundacao", "alvenaria"],
     )
     nome: str = Field(
@@ -313,6 +313,7 @@ class ErroOutput(BaseModel):
         title="Mensagem de erro",
         description="Descrição do erro ocorrido durante a execução da tool.",
     )
+    isError: bool = True
 
     model_config = ConfigDict(extra="forbid")
 

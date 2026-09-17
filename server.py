@@ -70,8 +70,11 @@ def _seguro(fn: Callable[[], Any], tool_name: str = "tool", **contexto: Any) -> 
     try:
         with log_tool_call(tool_name, **contexto):
             return fn()
+    except ValueError:
+        raise  # Propagar erro de negócio para o FastMCP gerar isError=true
     except Exception as exc:
-        return schemas.ErroOutput(erro=str(exc)).model_dump()
+        logger.error("erro_sys: %s: %s", tool_name, exc, exc_info=True)
+        return schemas.ErroOutput(erro=str(exc), isError=True).model_dump()
 
 
 def _idempotente(
@@ -197,8 +200,8 @@ def criar_eap_node(
     nome: Annotated[str, Field(description="Descrição legível do item da EAP.", examples=["Sapata S1"])],
     parent_id: Annotated[str | None, Field(description="EAP_ID do nó pai. Nulo/omitido = raiz.", examples=["1.1"])] = None,
     frente_id: Annotated[str, Field(description="Frente de serviço.", examples=["FR-001"])] = "",
+    tipo_frente: Annotated[str, Field(description="Tipo de serviço, ex.: fundacao.", examples=["fundacao"])] = ...,
     local_id: Annotated[str | None, Field(description="Local/ambiente.", examples=["BLOCO-A"])] = None,
-    tipo_frente: Annotated[str, Field(description="Tipo de serviço, ex.: fundacao.", examples=["fundacao"])] = "",
     unidade: Annotated[str | None, Field(description="Unidade de medida (m², m³, un...).", examples=["m³"])] = None,
     quantidade: Annotated[float | None, Field(description="Quantidade planejada (>= 0).", ge=0)] = None,
     nao_aplicavel: Annotated[bool | None, Field(description="True = pacote N/A (verba/provisório); folha sem quantidade e sem N/A gera aviso FANTASMA.")] = None,
@@ -375,42 +378,64 @@ def buscar_eap_node(
 @mcp.tool()
 def atualizar_eap_node(
     eap_id: Annotated[str, Field(description="Código hierárquico do nó a atualizar, ex.: '1.1.1'.", examples=["1.1.1"])],
+    uid: Annotated[str | None, Field(description="UID estável do nó (opcional; preferido se o nó foi movido).", examples=["a1b2c3d4-..."])] = None,
     nome: Annotated[str | None, Field(description="Nova descrição legível.", examples=["Sapata S1B"])] = None,
     frente_id: Annotated[str | None, Field(description="Nova frente de serviço.", examples=["FR-001"])] = None,
     local_id: Annotated[str | None, Field(description="Novo local/ambiente.", examples=["BLOCO-A"])] = None,
     tipo_frente: Annotated[str | None, Field(description="Novo tipo de serviço (fundacao, estrutura, alvenaria...).", examples=["fundacao"])] = None,
     unidade: Annotated[str | None, Field(description="Nova unidade (m², m³, ml, un, kg, conj, vb, pt).", examples=["m³"])] = None,
-    quantidade: Annotated[float | None, Field(description="Nova quantidade planejada (>= 0); só em nós-folha.", ge=0)] = None,
+    quantidade: Annotated[float | None, Field(description="Nova quantity planejada (>= 0); só em nós-folha.", ge=0)] = None,
     nao_aplicavel: Annotated[bool | None, Field(description="Novo estado N/A (True/False).")] = None,
     motivo_na: Annotated[str | None, Field(description="Novo motivo do N/A.")] = None,
-    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = projeto 'default'.", examples=["default"])] = None,
+    request_id: Annotated[str | None, Field(description="Idempotência: mesmo request_id retorna a mesma resposta (evita duplicar em retry).")] = None,
 ) -> dict[str, Any]:
     """Atualiza campos de um nó existente sem alterar a hierarquia.
 
     Passe apenas os campos a alterar. Valida unidade e tipo_frente no
-    vocabulário fechado e rejeita quantidade em nó com filhos.
+    vocabulário fechado e rejeita quantity em nó com filhos.
+
+    Se ``uid`` fornecido, prefere a busca por UID (estável). Senão, usa
+    ``eap_id``. Caso o nó tenha sido movido, o ``uid`` é a referência
+    confiável — o ``eap_id`` pode ter mudado nessa situação.
     """
 
     def _executar() -> dict[str, Any]:
         pid = project_id or models.DEFAULT_PROJECT_ID
         dados = {k: v for k, v in {
             "nome": nome, "frente_id": frente_id, "local_id": local_id,
-            "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
+            "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantity,
             "nao_aplicavel": nao_aplicavel, "motivo_na": motivo_na,
         }.items() if v is not None}
         dados["project_id"] = pid
+
+        # Resolver o EAP_ID alvo: uid (estável) ou eap_id explícito
+        if uid:
+            node_lookup = models.buscar_por_uid(uid, pid)
+            if node_lookup is None:
+                return schemas.ErroOutput(
+                    erro=f"Nó com uid={uid!r} não encontrado no projeto '{pid}'."
+                ).model_dump()
+            target_eap_id = node_lookup["eap_id"]
+        else:
+            target_eap_id = eap_id
+
         if not dados:
-            atual = models.buscar_por_eap_id(eap_id, pid)
-            if atual is None:
-                return schemas.ErroOutput(erro=f"Nó EAP '{eap_id}' não encontrado.").model_dump()
-            return schemas.EAPNodeOutput.model_validate(atual).model_dump()
-        novo = models.atualizar_nodo(eap_id, dados)
+            # Somente leitura: retornar o nó atual sem modificar
+            node = models.buscar_por_eap_id(target_eap_id, pid)
+            if node is None:
+                return schemas.ErroOutput(
+                    erro=f"Nó '{target_eap_id}' não encontrado no projeto '{pid}'."
+                ).model_dump()
+            return schemas.EAPNodeOutput.model_validate(node).model_dump()
+
+        novo = models.atualizar_nodo(target_eap_id, dados)
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
 
     payload = {
-        "eap_id": eap_id, "nome": nome, "frente_id": frente_id, "local_id": local_id,
-        "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
+        "uid": uid, "eap_id": eap_id, "nome": nome, "frente_id": frente_id,
+        "local_id": local_id, "tipo_frente": tipo_frente, "unidade": unidade,
+        "quantidade": quantidade, "nao_aplicavel": nao_aplicavel, "motivo_na": motivo_na,
     }
     return _idempotente(request_id, "atualizar_eap_node", payload, _executar)
 
