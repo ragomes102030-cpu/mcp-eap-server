@@ -407,7 +407,7 @@ def atualizar_eap_node(
         pid = project_id or models.DEFAULT_PROJECT_ID
         dados = {k: v for k, v in {
             "nome": nome, "frente_id": frente_id, "local_id": local_id,
-            "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantity,
+            "tipo_frente": tipo_frente, "unidade": unidade, "quantidade": quantidade,
             "nao_aplicavel": nao_aplicavel, "motivo_na": motivo_na,
         }.items() if v is not None}
         dados["project_id"] = pid
