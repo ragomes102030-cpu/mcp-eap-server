@@ -38,6 +38,8 @@ from typing import Annotated, Any, Callable
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import TransportSecuritySettings
 from pydantic import Field
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 import models
 import schemas
@@ -731,6 +733,13 @@ _idem_limpos = models.limpar_idempotencia_antiga()
 # ``streamable_http_app()`` devolve uma Starlette ASGI application que serve
 # o protocolo MCP streamable-http. Esta é a app que o uvicorn/Render vai servir.
 app = mcp.streamable_http_app()
+
+
+async def healthz(_request: Any) -> JSONResponse:
+    return JSONResponse({"ok": True, "service": "mcp-eap-server"})
+
+
+app.routes.append(Route("/healthz", healthz, methods=["GET"]))
 
 
 def main() -> None:

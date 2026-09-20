@@ -49,6 +49,7 @@ uvicorn server:app --host 0.0.0.0 --port 10000
 ```
 
 O servidor expõe o endpoint em `http://localhost:10000/mcp`.
+O endpoint `GET /healthz` retorna `{"ok": true}` para probes de disponibilidade.
 
 ## Schema do nó (ARES)
 

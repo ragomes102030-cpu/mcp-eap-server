@@ -305,6 +305,11 @@ def _coluna_ja_existe(exc: Exception) -> bool:
     return "duplicate column" in msg or "already exists" in msg
 
 
+def _turso_ddl_sem_resultado(exc: Exception) -> bool:
+    """True para o bug do cliente antigo que omite ``result`` em DDL sem rows."""
+    return isinstance(exc, KeyError) and exc.args == ("result",)
+
+
 def _alter_table_idempotente(sql: str) -> None:
     """Roda um ``ALTER TABLE ... ADD COLUMN`` (ou índice) tolerando erros.
 
@@ -327,6 +332,12 @@ def _alter_table_idempotente(sql: str) -> None:
             conn.commit()
     except Exception as exc:
         if not _coluna_ja_existe(exc):
+            if _turso_ddl_sem_resultado(exc):
+                # libsql-client 0.3.1 pode executar DDL remoto e falhar ao
+                # desserializar a resposta porque ela não contém ``result``.
+                # Não tratar esse caso como falha evita falsos positivos no
+                # boot; a operação já foi enviada ao banco.
+                return
             import sys
             print(
                 f"[models.db] AVISO: migração {sql!r} falhou de um jeito "
