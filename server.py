@@ -75,8 +75,11 @@ def _seguro(fn: Callable[[], Any], tool_name: str = "tool", **contexto: Any) -> 
     try:
         with log_tool_call(tool_name, **contexto):
             return fn()
-    except ValueError:
-        raise  # Propagar erro de negócio para o FastMCP gerar isError=true
+    except ValueError as exc:
+        # Erros de validação também precisam chegar como JSON para clientes MCP
+        # que leem o conteúdo da ferramenta e fazem reconciliação por payload.
+        logger.info("erro_negocio: %s: %s", tool_name, exc)
+        return schemas.ErroOutput(erro=str(exc), isError=True).model_dump()
     except Exception as exc:
         logger.error("erro_sys: %s: %s", tool_name, exc, exc_info=True)
         return schemas.ErroOutput(erro=str(exc), isError=True).model_dump()
