@@ -198,3 +198,80 @@ def test_montar_arvore_subarvore(db):
     with pytest.raises(ValueError):
         db.montar_arvore("9.9", "default")
 
+
+
+def test_regra_100_porcento_aprovavel(db):
+    db.inserir_nodo({"eap_id": "1", "parent_id": None, "nivel": 1,
+                     "frente_id": "FR-A", "local_id": "L1",
+                     "tipo_frente": "fundacao", "nome": "Fundacao",
+                     "unidade": "conj", "quantidade": None})
+    db.inserir_nodo({"eap_id": "1.1", "parent_id": "1", "nivel": 2,
+                     "frente_id": "FR-A", "local_id": "L1",
+                     "tipo_frente": "fundacao", "nome": "Escavacao",
+                     "unidade": "m³", "quantidade": 10})
+    a = db.criar_item_escopo("Fundação da edificação", "default",
+                             code="SC-01", tipo="system", fonte="projeto")
+    b = db.criar_item_escopo("Escavação", "default",
+                             code="SC-02", tipo="deliverable", fonte="projeto")
+    db.vincular_escopo_eap(a["scope_id"], "1", "default")
+    db.vincular_escopo_eap(b["scope_id"], "1.1", "default")
+    r = db.validar_100_porcento("default")
+    assert r["percentual_cobertura"] == 100.0
+    assert r["escopo_total"] == 2
+    assert r["escopo_coberto"] == 2
+    assert r["status"] == "APROVAVEL"
+    assert r["escopo_sem_eap"] == []
+
+
+def test_regra_100_porcento_reprova_escopo_sem_eap(db):
+    db.inserir_nodo({"eap_id": "1", "parent_id": None, "nivel": 1,
+                     "frente_id": "FR-A", "local_id": "L1",
+                     "tipo_frente": "estrutura", "nome": "Estrutura",
+                     "unidade": "conj", "quantidade": None})
+    a = db.criar_item_escopo("Estrutura", "default", code="SC-01")
+    b = db.criar_item_escopo("Cobertura", "default", code="SC-02")
+    db.vincular_escopo_eap(a["scope_id"], "1", "default")
+    r = db.validar_100_porcento("default")
+    assert r["percentual_cobertura"] == 50.0
+    assert r["escopo_coberto"] == 1
+    assert r["status"] == "REPROVADA"
+    assert r["escopo_sem_eap"][0]["scope_id"] == b["scope_id"]
+
+
+def test_regra_100_sem_base_de_escopo(db):
+    r = db.validar_100_porcento("default")
+    assert r["status"] == "SEM_BASE_DE_ESCOPO"
+    assert r["percentual_cobertura"] == 0.0
+
+
+def test_regra_100_rejeita_eap_inexistente(db):
+    a = db.criar_item_escopo("Entrega documental", "default", code="SC-01")
+    with pytest.raises(ValueError, match="Nó EAP não encontrado"):
+        db.vincular_escopo_eap(a["scope_id"], "9.9", "default")
+
+
+def test_regra_100_preserva_uid_apos_movimento(db):
+    db.inserir_nodo({"eap_id": "1", "parent_id": None, "nivel": 1,
+                     "frente_id": "FR-A", "local_id": "L1",
+                     "tipo_frente": "fundacao", "nome": "Fundacao",
+                     "unidade": "conj", "quantidade": None})
+    db.inserir_nodo({"eap_id": "1.1", "parent_id": "1", "nivel": 2,
+                     "frente_id": "FR-A", "local_id": "L1",
+                     "tipo_frente": "fundacao", "nome": "Escavacao",
+                     "unidade": "m³", "quantidade": 10})
+    n = db.buscar_por_eap_id("1.1", "default")
+    a = db.criar_item_escopo("Escavação", "default", code="SC-01")
+    db.vincular_escopo_eap(a["scope_id"], "1.1", "default")
+    uid = n["uid"]
+    db.inserir_nodo({"eap_id": "2", "parent_id": None, "nivel": 1,
+                     "frente_id": "FR-B", "local_id": "L2",
+                     "tipo_frente": "estrutura", "nome": "Estrutura",
+                     "unidade": "conj", "quantidade": None})
+    db.mover_nodo("1.1", "2", "default")
+    r = db.validar_100_porcento("default")
+    assert r["status"] == "APROVAVEL"
+    assert r["escopo_sem_eap"] == []
+    assert r["eap_sem_escopo"]  # o restante da árvore é apenas alerta
+    cobertura = db.listar_coberturas("default")[0]
+    assert cobertura["eap_uid"] == uid
+    assert cobertura["eap_id"] == "2.1"

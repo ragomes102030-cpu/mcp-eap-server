@@ -96,6 +96,43 @@ CREATE TABLE IF NOT EXISTS eap_idempotency (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS eap_scope_item (
+    scope_id       TEXT NOT NULL,
+    project_id     TEXT NOT NULL,
+    code           TEXT,
+    descricao      TEXT NOT NULL,
+    tipo           TEXT NOT NULL DEFAULT 'deliverable',
+    fonte          TEXT,
+    quantidade     REAL,
+    unidade        TEXT,
+    obrigatorio    INTEGER NOT NULL DEFAULT 1,
+    status         TEXT NOT NULL DEFAULT 'ativo',
+    created_at     TEXT DEFAULT (datetime('now')),
+    updated_at     TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (project_id, scope_id)
+);
+CREATE INDEX IF NOT EXISTS ix_eap_scope_project ON eap_scope_item(project_id);
+CREATE INDEX IF NOT EXISTS ix_eap_scope_code ON eap_scope_item(project_id, code);
+
+CREATE TABLE IF NOT EXISTS eap_scope_coverage (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id     TEXT NOT NULL,
+    scope_id       TEXT NOT NULL,
+    eap_uid        TEXT NOT NULL,
+    eap_id         TEXT NOT NULL,
+    papel          TEXT NOT NULL DEFAULT 'principal',
+    created_at     TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id, scope_id)
+        REFERENCES eap_scope_item(project_id, scope_id)
+);
+CREATE INDEX IF NOT EXISTS ix_eap_scope_coverage_scope
+    ON eap_scope_coverage(project_id, scope_id);
+CREATE INDEX IF NOT EXISTS ix_eap_scope_coverage_uid
+    ON eap_scope_coverage(project_id, eap_uid);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_eap_scope_principal
+    ON eap_scope_coverage(project_id, scope_id)
+    WHERE papel = 'principal';
+
 CREATE TABLE IF NOT EXISTS eap_id_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     uid         TEXT NOT NULL,

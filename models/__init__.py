@@ -52,6 +52,15 @@ from .nodes import (
     validar_estrutura,
     validar_quantidade_so_em_folha,
 )
+from .escopo import (
+    buscar_item_escopo,
+    criar_item_escopo,
+    desvincular_escopo_eap,
+    listar_coberturas,
+    listar_escopo,
+    validar_100_porcento,
+    vincular_escopo_eap,
+)
 from .projetos import (
     atualizar_projeto,
     buscar_projeto,
@@ -88,6 +97,8 @@ __all__ = [
     "deletar_projeto", "listar_projetos",
     "contar_templates", "contar_templates_filtrados", "inserir_template",
     "listar_templates",
+    "buscar_item_escopo", "criar_item_escopo", "desvincular_escopo_eap",
+    "listar_coberturas", "listar_escopo", "validar_100_porcento", "vincular_escopo_eap",
     "TIPOS_FRENTE_VALIDOS", "UNIDADE_FILHOS_PERMITIDOS", "UNIDADES_VALIDAS",
     "normalizar_nome_frase", "normalizar_tipo_frente", "normalizar_unidade",
 ]

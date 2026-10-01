@@ -2,7 +2,7 @@
 
 Versao HTTP/streamable para deploy em nuvem (Render, Railway, Fly.io).
 
-Ferramentas expostas (18 tools):
+Ferramentas expostas (23 tools):
   * criar_eap_node         cria no, gera EAP_ID hierarquico e calcula NIVEL
   * get_eap_tree           retorna a arvore em JSON aninhado
   * get_eap_node           retorna um no especifico
@@ -21,6 +21,11 @@ Ferramentas expostas (18 tools):
   * listar_por_tipo_frente filtra nos por tipo de frente de servico
   * buscar_eap_node        busca nos por termo (acento e caixa ignorados)
   * listar_templates       lista exemplos reais de EAP (templates)
+  * criar_item_escopo      registra escopo formal da obra
+  * listar_escopo          lista o registro de escopo
+  * vincular_escopo_eap    vincula escopo à EAP
+  * desvincular_escopo_eap remove vínculo escopo↔EAP
+  * validar_regra_100_porcento audita cobertura de 100% do escopo
 
 Variaveis de ambiente:
   * PORT — porta TCP (padrao 10000). O Render injeta automaticamente.
@@ -723,6 +728,106 @@ def listar_templates(
     )
 
 
+
+@mcp.tool()
+def criar_item_escopo(
+    descricao: Annotated[str, Field(description="Entregável/requisito que representa o escopo da obra.")],
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.")] = None,
+    code: Annotated[str | None, Field(description="Código externo do item de escopo.")] = None,
+    tipo: Annotated[str, Field(description="Categoria: deliverable, system, requirement, management, support ou enabling.")] = "deliverable",
+    fonte: Annotated[str | None, Field(description="Origem do escopo: contrato, projeto, memorial, requisito etc.")] = None,
+    quantidade: Annotated[float | None, Field(description="Quantidade de referência, quando aplicável.", ge=0)] = None,
+    unidade: Annotated[str | None, Field(description="Unidade da quantidade, quando aplicável.")] = None,
+    obrigatorio: Annotated[bool, Field(description="Se entra no gate dos 100%.")] = True,
+    scope_id: Annotated[str | None, Field(description="ID estável opcional do item.")] = None,
+) -> dict[str, Any]:
+    """Registra um item formal do escopo antes da auditoria da EAP."""
+    return _seguro(
+        lambda: models.criar_item_escopo(
+            descricao, project_id, code=code, tipo=tipo, fonte=fonte,
+            quantidade=quantidade, unidade=unidade, obrigatorio=obrigatorio,
+            scope_id=scope_id,
+        ),
+        "criar_item_escopo", project_id=project_id,
+    )
+
+
+@mcp.tool()
+def listar_escopo(
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.")] = None,
+    apenas_ativos: Annotated[bool, Field(description="Retorna apenas itens ativos.")] = True,
+) -> dict[str, Any]:
+    """Lista a base formal de escopo da obra."""
+    return _seguro(
+        lambda: {"project_id": project_id or models.DEFAULT_PROJECT_ID,
+                 "itens": models.listar_escopo(project_id, apenas_ativos=apenas_ativos)},
+        "listar_escopo", project_id=project_id,
+    )
+
+
+@mcp.tool()
+def vincular_escopo_eap(
+    scope_id: Annotated[str, Field(description="ID do item de escopo.")],
+    eap_id: Annotated[str, Field(description="EAP_ID do nó de destino.")],
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.")] = None,
+    papel: Annotated[str, Field(description="principal ou secundario.")] = "principal",
+) -> dict[str, Any]:
+    """Vincula escopo à EAP usando o UID estável do nó como referência persistente."""
+    return _seguro(
+        lambda: models.vincular_escopo_eap(scope_id, eap_id, project_id, papel=papel),
+        "vincular_escopo_eap", project_id=project_id, eap_id=eap_id,
+    )
+
+
+@mcp.tool()
+def desvincular_escopo_eap(
+    scope_id: Annotated[str, Field(description="ID do item de escopo.")],
+    eap_id: Annotated[str | None, Field(description="EAP_ID específico; omitido remove todos os vínculos do item.")] = None,
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.")] = None,
+) -> dict[str, Any]:
+    """Remove vínculo entre item de escopo e EAP."""
+    return _seguro(
+        lambda: {"removidos": models.desvincular_escopo_eap(scope_id, eap_id, project_id)},
+        "desvincular_escopo_eap", project_id=project_id, eap_id=eap_id,
+    )
+
+
+@mcp.tool()
+def validar_regra_100_porcento(
+    project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.")] = None,
+) -> dict[str, Any]:
+    """Audita se 100% do escopo obrigatório possui exatamente um vínculo principal na EAP."""
+    return _seguro(
+        lambda: models.validar_100_porcento(project_id),
+        "validar_regra_100_porcento", project_id=project_id,
+    )
+
+
+
+async def internal_eap_node(request: Any) -> JSONResponse:
+    """Resolve um eap_id/uid para serviços internos de cronograma.
+    
+    O endpoint é somente leitura e serve para manter a rastreabilidade entre
+    serviços que não compartilham banco. Em produção, pode ser protegido por
+    um gateway/autenticação de rede sem alterar o contrato.
+    """
+    from urllib.parse import parse_qs
+    query = parse_qs(request.scope.get("query_string", b"").decode("utf-8"))
+    project_id = (query.get("project_id") or [models.DEFAULT_PROJECT_ID])[0]
+    eap_ref = (query.get("eap_ref") or [""])[0].strip()
+    if not eap_ref:
+        return JSONResponse({"ok": False, "erro": "eap_ref é obrigatório."}, status_code=400)
+    node = models.buscar_por_uid(eap_ref, project_id)
+    if node is None:
+        node = models.buscar_por_eap_id(eap_ref, project_id)
+    if node is None:
+        return JSONResponse({"ok": False, "encontrado": False}, status_code=404)
+    return JSONResponse({
+        "ok": True, "encontrado": True, "project_id": project_id,
+        "uid": node["uid"], "eap_id": node["eap_id"], "nome": node["nome"],
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # App ASGI para uvicorn (streamable-http)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -743,6 +848,7 @@ async def healthz(_request: Any) -> JSONResponse:
 
 
 app.routes.append(Route("/healthz", healthz, methods=["GET"]))
+app.routes.append(Route("/internal/eap-node", internal_eap_node, methods=["GET"]))
 
 
 def main() -> None:
