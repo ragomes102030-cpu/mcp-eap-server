@@ -804,6 +804,30 @@ def validar_regra_100_porcento(
 
 
 
+async def internal_eap_node(request: Any) -> JSONResponse:
+    """Resolve um eap_id/uid para serviços internos de cronograma.
+    
+    O endpoint é somente leitura e serve para manter a rastreabilidade entre
+    serviços que não compartilham banco. Em produção, pode ser protegido por
+    um gateway/autenticação de rede sem alterar o contrato.
+    """
+    from urllib.parse import parse_qs
+    query = parse_qs(request.scope.get("query_string", b"").decode("utf-8"))
+    project_id = (query.get("project_id") or [models.DEFAULT_PROJECT_ID])[0]
+    eap_ref = (query.get("eap_ref") or [""])[0].strip()
+    if not eap_ref:
+        return JSONResponse({"ok": False, "erro": "eap_ref é obrigatório."}, status_code=400)
+    node = models.buscar_por_uid(eap_ref, project_id)
+    if node is None:
+        node = models.buscar_por_eap_id(eap_ref, project_id)
+    if node is None:
+        return JSONResponse({"ok": False, "encontrado": False}, status_code=404)
+    return JSONResponse({
+        "ok": True, "encontrado": True, "project_id": project_id,
+        "uid": node["uid"], "eap_id": node["eap_id"], "nome": node["nome"],
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # App ASGI para uvicorn (streamable-http)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -824,6 +848,7 @@ async def healthz(_request: Any) -> JSONResponse:
 
 
 app.routes.append(Route("/healthz", healthz, methods=["GET"]))
+app.routes.append(Route("/internal/eap-node", internal_eap_node, methods=["GET"]))
 
 
 def main() -> None:
