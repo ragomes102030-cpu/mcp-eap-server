@@ -9,6 +9,13 @@ import hmac
 import json
 import os
 
+# Vercel Marketplace Turso provides different names from the legacy Render setup.
+if os.environ.get("VERCEL") == "1":
+    if not os.environ.get("TURSO_URL") and os.environ.get("TURSO_DATABASE_URL"):
+        os.environ["TURSO_URL"] = os.environ["TURSO_DATABASE_URL"]
+    if not os.environ.get("TURSO_TOKEN") and os.environ.get("TURSO_AUTH_TOKEN"):
+        os.environ["TURSO_TOKEN"] = os.environ["TURSO_AUTH_TOKEN"]
+
 _REQUIRED_DB = ("TURSO_URL", "TURSO_TOKEN")
 _MISSING = [key for key in ("MCP_API_TOKEN", *_REQUIRED_DB) if not os.environ.get(key)]
 _mcp_app = None
