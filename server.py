@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     name="eap-server",
+    stateless_http=(os.environ.get("VERCEL") == "1"),
+    json_response=(os.environ.get("VERCEL") == "1"),
     instructions=(
         "Servidor MCP de Estrutura Analitica do Projeto (EAP) de obras. "
         "Gerencia nos hierarquicos (EAP_ID no formato '1.2.3') com PARENT_ID, "
@@ -64,7 +66,8 @@ mcp = FastMCP(
         "validar_estrutura para auditoria."
     ),
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False,
+        enable_dns_rebinding_protection=(os.environ.get("VERCEL") == "1"),
+        allowed_hosts=["mcp-eap-server.onrender.com", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
     ),
 )
 
