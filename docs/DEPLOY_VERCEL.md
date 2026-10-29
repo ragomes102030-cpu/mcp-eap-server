@@ -31,6 +31,6 @@ na Vercel (sistema de arquivos efêmero).
 5. Após um novo deploy, dados persistem no Turso (para EAP/Cronograma).
 6. Uma alteração via MCP só ocorre em projeto de teste (não em obra real).
 
-A função de entrada está em `api/index.py`, a URL externa é `/mcp`.
+A Vercel utiliza `app.py` como ponto de entrada, que carrega `api/index.py` com autenticação. A URL externa é `/mcp`.
 O token simples por header é apropriado para conexões privadas configuradas
 manualmente; publicação pública multiusuário requer OAuth/autorização por usuário.
