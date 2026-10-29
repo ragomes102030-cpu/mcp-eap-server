@@ -9,7 +9,7 @@ continuam no Python; apenas o transporte é adaptado para chamadas HTTP sem sess
   `Authorization: Bearer <seu-token>` no conector HTTP. Nunca versionar.
 - `TURSO_URL`: URL do banco Turso/libSQL persistente exclusivo deste MCP.
 - `TURSO_TOKEN`: token Turso deste banco. **Sem esses dois, o servidor retorna 503**.
-- `MCP_REQUIRE_TURSO=1`: garante que o health check responda 503 quando não configurado.
+- O health check só responde 200 quando token e credenciais Turso estiverem configurados.
 
 Defina as variáveis em produção **e** preview conforme necessidade; faça um novo
 deploy após alterar as variáveis. Não use SQLite local para dados persistentes
