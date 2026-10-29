@@ -14,7 +14,7 @@ public_mcp = FastMCP(
     json_response=True,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=["*.vercel.app", "localhost:*", "127.0.0.1:*"],
+        allowed_hosts=["arquimedes-mcp-eap.vercel.app", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
     ),
 )
 
