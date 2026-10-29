@@ -8,6 +8,10 @@
     {
       "source": "/healthz",
       "destination": "/api/healthz"
+    },
+    {
+      "source": "/internal/eap-node",
+      "destination": "/api/internal"
     }
   ]
 }
