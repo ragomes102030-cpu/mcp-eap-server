@@ -109,12 +109,19 @@ def vincular_escopo_eap(
             raise ValueError("Nó EAP não encontrado no projeto.")
         if papel == "principal":
             existente = conn.execute(
-                """SELECT scope_id FROM eap_scope_coverage
+                """SELECT eap_uid FROM eap_scope_coverage
                    WHERE project_id = ? AND scope_id = ? AND papel = 'principal'""",
                 (pid, scope_id),
             ).fetchone()
-            if existente and existente["scope_id"] != scope_id:
-                raise ValueError("item de escopo já possui vínculo principal.")
+            if existente:
+                if existente["eap_uid"] != node["uid"]:
+                    raise ValueError("item de escopo já possui vínculo principal.")
+                # Repeated exact binding is idempotent and does not replace
+                # historical rows or silently transfer scope ownership.
+                return {
+                    "project_id": pid, "scope_id": scope_id, "eap_uid": node["uid"],
+                    "eap_id": node["eap_id"], "eap_nome": node["nome"], "papel": papel,
+                }
         conn.execute(
             """INSERT OR REPLACE INTO eap_scope_coverage
                (project_id, scope_id, eap_uid, eap_id, papel)
