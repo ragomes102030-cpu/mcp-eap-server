@@ -73,6 +73,11 @@ def validar_estrutura_eap(nos: list[dict]) -> dict:
             erros.append(f"{uid}: parent_id ausente: {pai}")
         if pai and uid != pai and not uid.startswith(pai + "."):
             erros.append(f"{uid}: codigo nao pertence a parent_id {pai}")
+        # Cada no deve apontar para seu pai IMEDIATO, sem saltar um nivel.
+        # Ex.: 1.2.3 nao pode ter 1 como parent_id, mesmo que 1 seja ancestral.
+        pai_esperado = uid.rsplit(".", 1)[0] if "." in uid else ""
+        if pai and pai_esperado and pai != pai_esperado:
+            erros.append(f"{uid}: parent_id {pai} deve ser o pai imediato {pai_esperado}")
         if pai and pai == uid:
             erros.append(f"{uid}: pai de si mesmo")
         if not pai and esperado != 1:
