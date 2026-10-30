@@ -81,6 +81,29 @@ async def _reject_unsupported_sse_get(scope, send):
     return True
 
 
+
+# Only the stateless anonymous calculation endpoint may be called from a
+# browser origin. Private /mcp retains its authentication and no open CORS.
+_PUBLIC_CORS = (
+    (b"access-control-allow-origin", b"*"),
+    (b"access-control-allow-methods", b"POST, GET, HEAD, OPTIONS"),
+    (b"access-control-allow-headers",
+     b"Accept, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name, "
+     b"Mcp-Session-Id, Last-Event-ID"),
+    (b"access-control-expose-headers", b"MCP-Protocol-Version, Mcp-Session-Id"),
+    (b"access-control-max-age", b"600"),
+)
+
+
+def _public_cors_sender(send):
+    async def send_public(message):
+        if message["type"] == "http.response.start":
+            message = dict(message, headers=list(message.get("headers", [])) + list(_PUBLIC_CORS))
+        await send(message)
+
+    return send_public
+
+
 async def app(scope, receive, send):
     if scope["type"] == "lifespan":
         await _lifespan_both(receive, send)
@@ -95,6 +118,7 @@ async def app(scope, receive, send):
     # Public endpoint has its OWN tools and no access to project storage.
     # Private /mcp and /internal/eap-node still require MCP_API_TOKEN.
     if path.rstrip("/") == "/public-mcp":
+        send_public = _public_cors_sender(send)
         # Claude may first probe the URL with an ordinary GET/HEAD before
         # negotiating MCP Streamable HTTP. Such probes need a stable success
         # status; real SSE GET and JSON-RPC POST continue to the MCP transport.
@@ -103,26 +127,26 @@ async def app(scope, receive, send):
             (key.lower(), val) for key, val in scope.get("headers", [])
         ).get(b"accept", b""):
             if method == "HEAD":
-                await send({"type": "http.response.start", "status": 200,
+                await send_public({"type": "http.response.start", "status": 200,
                             "headers": [(b"cache-control", b"no-store")]})
-                await send({"type": "http.response.body", "body": b""})
+                await send_public({"type": "http.response.body", "body": b""})
             else:
-                await _send_json(send, 200, {"ok": True,
+                await _send_json(send_public, 200, {"ok": True,
                     "transport": "streamable-http", "endpoint": "/public-mcp",
                     "auth": "none", "capabilities": "stateless-calculations-only"})
             return
         if method == "OPTIONS":
-            await send({"type": "http.response.start", "status": 204,
+            await send_public({"type": "http.response.start", "status": 204,
                         "headers": [(b"allow", b"GET, HEAD, POST, OPTIONS"),
                                     (b"cache-control", b"no-store")]})
-            await send({"type": "http.response.body", "body": b""})
+            await send_public({"type": "http.response.body", "body": b""})
             return
-        if await _reject_unsupported_sse_get(scope, send):
+        if await _reject_unsupported_sse_get(scope, send_public):
             return
         public_scope = dict(scope)
         public_scope["path"] = "/mcp"
         public_scope["raw_path"] = b"/mcp"
-        await _public_app(public_scope, receive, send)
+        await _public_app(public_scope, receive, send_public)
         return
     if path not in ("/mcp", "/api/index", "/internal/eap-node", "/api/internal"):
         await _send_json(send, 404, {"ok": False, "error": "Not found"})
