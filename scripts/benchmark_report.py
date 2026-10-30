@@ -22,9 +22,15 @@ def main():
             state = "FALHOU" if error is not None or failure is not None else (
                 "NÃO EXECUTADO" if skipped is not None else "PASSOU")
             totals[state] += 1
+            props = {p.attrib.get("name"): p.attrib.get("value")
+                     for p in testcase.findall("./properties/property")}
             records.append({
                 "case": testcase.attrib.get("classname", "")+"::"+testcase.attrib.get("name", ""),
                 "status": state, "seconds": testcase.attrib.get("time"),
+                "expected": props.get("expected"),
+                "obtained": props.get("obtained"),
+                "difference": props.get("difference"),
+                "tolerance": props.get("tolerance"),
                 "failure": ((error if error is not None else failure).attrib.get("message","")[:250]
                             if error is not None or failure is not None else None),
             })
