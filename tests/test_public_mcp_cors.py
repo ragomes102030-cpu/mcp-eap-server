@@ -14,7 +14,7 @@ def test_public_cors_preflight_and_private_isolation():
                 "content-type,mcp-protocol-version,mcp-method,mcp-name",
         })
         assert preflight.status_code == 204, preflight.text[:250]
-        assert preflight.headers["access-control-allow-origin"] == "*"
+        assert preflight.headers["access-control-allow-origin"] == "https://independent-client.example"
         headers = preflight.headers["access-control-allow-headers"].lower()
         for name in ("content-type", "mcp-protocol-version", "mcp-method", "mcp-name"):
             assert name in headers
@@ -24,7 +24,7 @@ def test_public_cors_preflight_and_private_isolation():
             "Origin": "https://independent-client.example",
         })
         assert public_get.status_code == 200
-        assert public_get.headers["access-control-allow-origin"] == "*"
+        assert public_get.headers["access-control-allow-origin"] == "https://independent-client.example"
 
         initialize = client.post("/public-mcp", json={
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
