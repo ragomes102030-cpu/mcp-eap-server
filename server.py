@@ -40,8 +40,9 @@ import os
 import sys
 from typing import Annotated, Any, Callable
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import TransportSecuritySettings
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
+from mcp_http_security import allowed_mcp_hosts
 from pydantic import Field
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -52,10 +53,8 @@ from observability import log_tool_call
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="eap-server",
-    stateless_http=(os.environ.get("VERCEL") == "1"),
-    json_response=(os.environ.get("VERCEL") == "1"),
     instructions=(
         "Servidor MCP de Estrutura Analitica do Projeto (EAP) de obras. "
         "Gerencia nos hierarquicos (EAP_ID no formato '1.2.3') com PARENT_ID, "
@@ -65,10 +64,7 @@ mcp = FastMCP(
         "deletar_eap_node para remover, mover_eap_node para reorganizar a arvore, "
         "validar_estrutura para auditoria."
     ),
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=(os.environ.get("VERCEL") == "1"),
-        allowed_hosts=["mcp-eap-server.onrender.com", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
-    ),
+
 )
 
 
@@ -850,7 +846,14 @@ else:
 
 # ``streamable_http_app()`` devolve uma Starlette ASGI application que serve
 # o protocolo MCP streamable-http. Esta é a app que o uvicorn/Render vai servir.
-app = mcp.streamable_http_app()
+app = mcp.streamable_http_app(
+    stateless_http=(os.environ.get("VERCEL") == "1"),
+    json_response=(os.environ.get("VERCEL") == "1"),
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=(os.environ.get("VERCEL") == "1"),
+        allowed_hosts=allowed_mcp_hosts("arquimedes-mcp-eap.vercel.app", "mcp-eap-server.onrender.com"),
+    ),
+)
 
 
 async def healthz(_request: Any) -> JSONResponse:

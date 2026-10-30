@@ -1,0 +1,37 @@
+name: SDK v2 dual-protocol regression (eap)
+on:
+  push:
+    branches: [feat/mcp2-dual-protocol-20261030]
+  pull_request:
+    branches: [audit/mcp-interop-smoke-20261030]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-modern-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MCP_TARGET: eap
+      VERCEL: "0"
+      MCP_PUBLIC_ALLOWED_ORIGINS: https://independent-client.example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frozen dependencies and testing client
+        run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m pip install httpx pytest-timeout==2.3.1
+          python -m pip check
+      - name: Check syntax and imports (public and private)
+        run: |
+          python -m py_compile public_mcp.py api/index.py server.py
+          python -c "import public_mcp; import server; import api.index; print('Both MCP apps import successfully')"
+      - name: Validate real legacy and modern MCP JSON-RPC locally
+        run: python -m pytest tests/test_public_mcp_dual_protocol.py -q -s
+      # ASGI MCP lifespan case already runs independently in preceding step.
+      # A repeated launch in the same workflow may deadlock during shutdown.
+      - name: Run legacy project unit and integration suite
+        run: python -m pytest tests/ --ignore=tests/test_public_mcp_dual_protocol.py -vv --timeout=90 --timeout-method=thread --disable-warnings --maxfail=1
