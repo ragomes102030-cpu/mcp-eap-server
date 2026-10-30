@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp_http_security import allowed_mcp_hosts
 
 public_mcp = MCPServer(
     name="arquimedes-eap-publico",
@@ -94,6 +95,6 @@ public_app = public_mcp.streamable_http_app(
     json_response=True,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=["arquimedes-mcp-eap.vercel.app", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
+        allowed_hosts=allowed_mcp_hosts("arquimedes-mcp-eap.vercel.app", "mcp-eap-server.onrender.com"),
     ),
 )
