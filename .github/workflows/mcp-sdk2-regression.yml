@@ -14,6 +14,7 @@ jobs:
     env:
       MCP_TARGET: eap
       VERCEL: "0"
+      MCP_PUBLIC_ALLOWED_ORIGINS: https://independent-client.example
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
