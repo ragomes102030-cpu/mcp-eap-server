@@ -80,7 +80,29 @@ async def app(scope, receive, send):
         return
     # Public endpoint has its OWN tools and no access to project storage.
     # Private /mcp and /internal/eap-node still require MCP_API_TOKEN.
-    if path == "/public-mcp":
+    if path.rstrip("/") == "/public-mcp":
+        # Claude may first probe the URL with an ordinary GET/HEAD before
+        # negotiating MCP Streamable HTTP. Such probes need a stable success
+        # status; real SSE GET and JSON-RPC POST continue to the MCP transport.
+        method = scope.get("method", "GET")
+        if method in ("GET", "HEAD") and b"text/event-stream" not in dict(
+            (key.lower(), val) for key, val in scope.get("headers", [])
+        ).get(b"accept", b""):
+            if method == "HEAD":
+                await send({"type": "http.response.start", "status": 200,
+                            "headers": [(b"cache-control", b"no-store")]})
+                await send({"type": "http.response.body", "body": b""})
+            else:
+                await _send_json(send, 200, {"ok": True,
+                    "transport": "streamable-http", "endpoint": "/public-mcp",
+                    "auth": "none", "capabilities": "stateless-calculations-only"})
+            return
+        if method == "OPTIONS":
+            await send({"type": "http.response.start", "status": 204,
+                        "headers": [(b"allow", b"GET, HEAD, POST, OPTIONS"),
+                                    (b"cache-control", b"no-store")]})
+            await send({"type": "http.response.body", "body": b""})
+            return
         public_scope = dict(scope)
         public_scope["path"] = "/mcp"
         public_scope["raw_path"] = b"/mcp"
