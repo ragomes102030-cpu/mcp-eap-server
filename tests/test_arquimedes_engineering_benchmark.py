@@ -15,7 +15,7 @@ def _node(db, code, parent, project="P-BENCH"):
     })
 
 
-def test_scope_reference_omission_then_exact_full_coverage(db):
+def test_scope_reference_omission_then_exact_full_coverage(db, record_property):
     _node(db, "1", None)
     _node(db, "1.1", "1")
     a = db.criar_item_escopo("Servico A", "P-BENCH", code="ES-01", fonte="escopo-ficticio")
@@ -29,6 +29,10 @@ def test_scope_reference_omission_then_exact_full_coverage(db):
     full = db.validar_100_porcento("P-BENCH")
     assert full["percentual_cobertura"] == 100
     assert full["status"] == "APROVAVEL"
+    record_property("expected", '{"initial_coverage":50,"final_coverage":100}')
+    record_property("obtained", f'{{"initial_coverage":{partial["percentual_cobertura"]},"final_coverage":{full["percentual_cobertura"]}}}')
+    record_property("difference", "0")
+    record_property("tolerance", "0"
 
 
 def test_primary_scope_binding_cannot_be_silently_reassigned(db):
