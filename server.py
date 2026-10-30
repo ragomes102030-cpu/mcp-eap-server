@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     name="eap-server",
+    stateless_http=(os.environ.get("VERCEL") == "1"),
+    json_response=(os.environ.get("VERCEL") == "1"),
     instructions=(
         "Servidor MCP de Estrutura Analitica do Projeto (EAP) de obras. "
         "Gerencia nos hierarquicos (EAP_ID no formato '1.2.3') com PARENT_ID, "
@@ -64,7 +66,8 @@ mcp = FastMCP(
         "validar_estrutura para auditoria."
     ),
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False,
+        enable_dns_rebinding_protection=(os.environ.get("VERCEL") == "1"),
+        allowed_hosts=["mcp-eap-server.onrender.com", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
     ),
 )
 
@@ -834,9 +837,16 @@ async def internal_eap_node(request: Any) -> JSONResponse:
 
 
 models.init_db()
-_seedados = seed_exemplo()
-_seed_templates = seed_templates()
-_idem_limpos = models.limpar_idempotencia_antiga()
+# Importing an ASGI app on Vercel must never insert sample EAP nodes, seed
+# templates or run idempotency cleanup. Cold starts run concurrently.
+if os.environ.get("VERCEL") == "1":
+    _seedados = 0
+    _seed_templates = 0
+    _idem_limpos = 0
+else:
+    _seedados = seed_exemplo()
+    _seed_templates = seed_templates()
+    _idem_limpos = models.limpar_idempotencia_antiga()
 
 # ``streamable_http_app()`` devolve uma Starlette ASGI application que serve
 # o protocolo MCP streamable-http. Esta é a app que o uvicorn/Render vai servir.
