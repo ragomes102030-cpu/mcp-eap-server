@@ -36,7 +36,7 @@ def test_public_cors_preflight_and_private_isolation():
             "Content-Type": "application/json",
         })
         assert initialize.status_code == 200, initialize.text[:400]
-        assert initialize.headers["access-control-allow-origin"] == "*"
+        assert initialize.headers["access-control-allow-origin"] == "https://independent-client.example"
 
         denied = client.options("/public-mcp", headers={
             "Origin": "https://unapproved-browser.example",
