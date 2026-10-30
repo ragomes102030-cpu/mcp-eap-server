@@ -39,7 +39,7 @@ def _espera():
 async def call(name, args, timeout=20):
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client as streamablehttp_client
-    async with streamablehttp_client(URL) as (r, w, _):
+    async with streamablehttp_client(URL) as (r, w):
         async with ClientSession(r, w) as s:
             await asyncio.wait_for(s.initialize(), timeout=timeout)
             res = await asyncio.wait_for(s.call_tool(name, args), timeout=timeout)
