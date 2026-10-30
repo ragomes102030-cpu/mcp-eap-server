@@ -42,6 +42,7 @@ from typing import Annotated, Any, Callable
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp_http_security import allowed_mcp_hosts
 from pydantic import Field
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -850,7 +851,7 @@ app = mcp.streamable_http_app(
     json_response=(os.environ.get("VERCEL") == "1"),
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=(os.environ.get("VERCEL") == "1"),
-        allowed_hosts=["mcp-eap-server.onrender.com", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
+        allowed_hosts=allowed_mcp_hosts("arquimedes-mcp-eap.vercel.app", "mcp-eap-server.onrender.com"),
     ),
 )
 
