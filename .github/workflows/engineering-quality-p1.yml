@@ -1,0 +1,31 @@
+name: Engineering quality P1 — EAP
+on:
+  push:
+    branches: [feat/quality-engineering-p1-20261030]
+  pull_request:
+    branches: [feat/claude-public-readonly-20261029]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  engineering-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MCP_TARGET: eap
+      VERCEL: "0"
+      MCP_PUBLIC_ALLOWED_ORIGINS: https://independent-client.example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tests and tools
+        run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m pip install httpx pytest-timeout==2.3.1
+          python -m pip check
+      - name: Test protocol once, in isolated process
+        run: timeout 80s python -m pytest tests/test_public_mcp_dual_protocol.py -q
+      - name: Test all EAP engineering functions, hierarchy and CORS
+        run: python -m pytest tests/ --ignore=tests/test_public_mcp_dual_protocol.py --timeout=60 --timeout-method=thread -q --maxfail=1
