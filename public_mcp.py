@@ -2,20 +2,15 @@
 from __future__ import annotations
 
 import math
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import TransportSecuritySettings
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
-public_mcp = FastMCP(
+public_mcp = MCPServer(
     name="arquimedes-eap-publico",
     instructions=("Modo publico de auditoria EAP. Somente analisa dados fornecidos "
                   "na propria chamada, sem consultar, criar ou alterar projetos no banco. "
                   "Para operacoes persistentes, use o MCP privado autenticado."),
-    stateless_http=True,
-    json_response=True,
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=["arquimedes-mcp-eap.vercel.app", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
-    ),
+
 )
 
 def _limitar(itens: list[dict], *, maximo: int = 150) -> None:
@@ -94,4 +89,11 @@ def validar_estrutura_eap(nos: list[dict]) -> dict:
             "origem": "dados_da_chamada", "persistido": False,
             "nota": "Validacao estrutural preliminar; regra de 100% requer escopo contratado para conferencia."}
 
-public_app = public_mcp.streamable_http_app()
+public_app = public_mcp.streamable_http_app(
+    stateless_http=True,
+    json_response=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["arquimedes-mcp-eap.vercel.app", "*.vercel.app", "localhost:*", "127.0.0.1:*"],
+    ),
+)
