@@ -1,0 +1,35 @@
+name: MCP public interoperability (eap)
+on:
+  pull_request:
+    branches:
+      - feat/claude-public-readonly-20261029
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MCP_TARGET: eap
+      MCP_REPORT_PATH: artifacts/mcp-interop-eap.json
+      # Set to 1 only after modern 2026-07-28 support has been implemented.
+      MCP_REQUIRE_MODERN: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check public endpoint, MCP protocol, real calculations and private auth
+        run: python scripts/check_public_mcp.py
+      - name: Attach interoperability results for audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-interop-eap
+          path: artifacts/mcp-interop-eap.json
+          if-no-files-found: warn
