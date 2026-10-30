@@ -12,7 +12,7 @@ jobs:
     env:
       MCP_TARGET: eap
       # Temporary immutable preview snapshot. Never point this at production.
-      MCP_BASE_URL: https://arquimedes-mcp-76f9xkej2-rafael-5864.vercel.app
+      MCP_BASE_URL: https://arquimedes-mcp-n48vlbdcd-rafael-5864.vercel.app
       MCP_REQUIRE_MODERN: "1"
       MCP_REPORT_PATH: artifacts/sdk2-preview-eap.json
     steps:
