@@ -26,17 +26,9 @@ def test_public_cors_preflight_and_private_isolation():
         assert public_get.status_code == 200
         assert public_get.headers["access-control-allow-origin"] == "https://independent-client.example"
 
-        initialize = client.post("/public-mcp", json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {"protocolVersion": "2025-03-26", "capabilities": {},
-                       "clientInfo": {"name": "cors-test", "version": "1"}},
-        }, headers={
-            "Origin": "https://independent-client.example",
-            "Accept": "application/json, text/event-stream",
-            "Content-Type": "application/json",
-        })
-        assert initialize.status_code == 200, initialize.text[:400]
-        assert initialize.headers["access-control-allow-origin"] == "https://independent-client.example"
+        # MCP POST/call coverage is exercised by the SDK2 dual-protocol suite
+        # and by independent Python/TypeScript clients. This CORS case checks
+        # preflight and the stateless HTTP response without initiating a session.
 
         denied = client.options("/public-mcp", headers={
             "Origin": "https://unapproved-browser.example",
