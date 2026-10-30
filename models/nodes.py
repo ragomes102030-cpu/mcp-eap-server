@@ -769,6 +769,17 @@ def _executar_move(
                 "VALUES (?, ?, ?, ?, ?)",
                 (uid_no, project_id, antigo, novo_id[antigo], motivo),
             )
+        # O vínculo do escopo usa UID estável, mas também guarda EAP_ID para
+        # exibição/desvinculação. Renumerar a árvore exige atualizar o espelho.
+        for n in sub:
+            antigo = n["eap_id"]
+            uid_no = n["dados"].get("uid")
+            if uid_no:
+                conn.execute(
+                    "UPDATE eap_scope_coverage SET eap_id = ? "
+                    "WHERE project_id = ? AND eap_uid = ?",
+                    (novo_id[antigo], project_id, uid_no),
+                )
         conn.commit()
 
     return {

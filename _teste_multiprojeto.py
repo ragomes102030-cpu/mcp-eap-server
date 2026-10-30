@@ -48,10 +48,10 @@ def _espera_porta(tempo_max: float = 30.0) -> bool:
 
 
 async def call(name: str, args: dict, timeout: float = 20.0) -> dict:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+    from mcp.client.session import ClientSession
+    from mcp.client.streamable_http import streamable_http_client as streamablehttp_client
 
-    async with streamablehttp_client(URL) as (r, w, _):
+    async with streamablehttp_client(URL) as (r, w):
         async with ClientSession(r, w) as s:
             await asyncio.wait_for(s.initialize(), timeout=timeout)
             res = await asyncio.wait_for(s.call_tool(name, args), timeout=timeout)
@@ -71,15 +71,15 @@ async def main() -> None:
         if not _espera_porta():
             log("FALHA: servidor de teste nao subiu")
             return
-        from mcp import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
+        from mcp.client.session import ClientSession
+        from mcp.client.streamable_http import streamable_http_client as streamablehttp_client
 
-        async with streamablehttp_client(URL) as (r, w, _):
+        async with streamablehttp_client(URL) as (r, w):
             async with ClientSession(r, w) as s:
                 await s.initialize()
                 tools = await s.list_tools()
                 nomes = sorted(t.name for t in tools.tools)
-                ok(len(nomes) == 18, f"tools/list expoe 18 tools (tem {len(nomes)})")
+                ok(len(nomes) >= 24, f"tools/list expoe pelo menos 24 tools (tem {len(nomes)})")
                 ok("buscar_eap_node" in nomes, "buscar_eap_node presente (Fase 2 §3)")
                 ok("criar_projeto" in nomes and "atualizar_projeto" in nomes,
                    "tools de projeto presentes")

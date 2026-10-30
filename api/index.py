@@ -8,6 +8,10 @@ from __future__ import annotations
 import hmac
 import json
 import os
+from contextlib import AsyncExitStack
+
+from public_mcp import public_app as _public_app
+from mcp_public_origins import allowed_public_origins
 
 # Vercel Marketplace Turso provides different names from the legacy Render setup.
 if os.environ.get("VERCEL") == "1":
@@ -44,12 +48,68 @@ async def _empty_lifespan(receive, send):
             return
 
 
+async def _lifespan_both(receive, send):
+    """Start the public and private FastMCP session managers independently."""
+    event = await receive()
+    if event["type"] != "lifespan.startup":
+        return
+    try:
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(_public_app.router.lifespan_context(_public_app))
+            if _mcp_app is not None:
+                await stack.enter_async_context(_mcp_app.router.lifespan_context(_mcp_app))
+            await send({"type": "lifespan.startup.complete"})
+            while True:
+                event = await receive()
+                if event["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+    except Exception as exc:
+        await send({"type": "lifespan.startup.failed", "message": str(exc)})
+
+
+async def _reject_unsupported_sse_get(scope, send):
+    """GET listener SSE is optional in MCP; serverless must not hold it open."""
+    if scope.get("method") != "GET":
+        return False
+    headers = {key.lower(): val for key, val in scope.get("headers", [])}
+    if b"text/event-stream" not in headers.get(b"accept", b""):
+        return False
+    await send({"type": "http.response.start", "status": 405,
+                "headers": [(b"allow", b"POST, OPTIONS"),
+                            (b"cache-control", b"no-store")]})
+    await send({"type": "http.response.body", "body": b""})
+    return True
+
+
+
+# CORS is opt-in and scoped to the stateless PUBLIC MCP only.
+# Private /mcp must never inherit these response headers.
+_PUBLIC_CORS = (
+    (b"access-control-allow-methods", b"POST, GET, HEAD, OPTIONS"),
+    (b"access-control-allow-headers",
+     b"Accept, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name, "
+     b"Mcp-Session-Id, Last-Event-ID"),
+    (b"access-control-expose-headers", b"MCP-Protocol-Version, Mcp-Session-Id"),
+    (b"access-control-max-age", b"600"),
+    (b"vary", b"Origin"),
+)
+
+
+def _public_cors_sender(send, origin):
+    async def send_public(message):
+        if message["type"] == "http.response.start" and origin:
+            message = dict(message, headers=list(message.get("headers", []))
+                           + list(_PUBLIC_CORS)
+                           + [(b"access-control-allow-origin", origin)])
+        await send(message)
+
+    return send_public
+
+
 async def app(scope, receive, send):
     if scope["type"] == "lifespan":
-        if _mcp_app is None:
-            await _empty_lifespan(receive, send)
-        else:
-            await _mcp_app(scope, receive, send)
+        await _lifespan_both(receive, send)
         return
     if scope["type"] != "http":
         return
@@ -57,6 +117,44 @@ async def app(scope, receive, send):
     if path in ("/healthz", "/api/healthz"):
         configured = not bool(_MISSING)
         await _send_json(send, 200 if configured else 503, {"ok": configured, "configured": configured})
+        return
+    # Public endpoint has its OWN tools and no access to project storage.
+    # Private /mcp and /internal/eap-node still require MCP_API_TOKEN.
+    if path.rstrip("/") == "/public-mcp":
+        origin = next((value for key, value in scope.get("headers", [])
+                       if key.lower() == b"origin"), b"")
+        if origin and origin.decode("utf-8", "replace").lower() not in allowed_public_origins():
+            await _send_json(send, 403, {"ok": False, "error": "Origin not allowed"})
+            return
+        send_public = _public_cors_sender(send, origin)
+        # Claude may first probe the URL with an ordinary GET/HEAD before
+        # negotiating MCP Streamable HTTP. Such probes need a stable success
+        # status; real SSE GET and JSON-RPC POST continue to the MCP transport.
+        method = scope.get("method", "GET")
+        if method in ("GET", "HEAD") and b"text/event-stream" not in dict(
+            (key.lower(), val) for key, val in scope.get("headers", [])
+        ).get(b"accept", b""):
+            if method == "HEAD":
+                await send_public({"type": "http.response.start", "status": 200,
+                            "headers": [(b"cache-control", b"no-store")]})
+                await send_public({"type": "http.response.body", "body": b""})
+            else:
+                await _send_json(send_public, 200, {"ok": True,
+                    "transport": "streamable-http", "endpoint": "/public-mcp",
+                    "auth": "none", "capabilities": "stateless-calculations-only"})
+            return
+        if method == "OPTIONS":
+            await send_public({"type": "http.response.start", "status": 204,
+                        "headers": [(b"allow", b"GET, HEAD, POST, OPTIONS"),
+                                    (b"cache-control", b"no-store")]})
+            await send_public({"type": "http.response.body", "body": b""})
+            return
+        if await _reject_unsupported_sse_get(scope, send_public):
+            return
+        public_scope = dict(scope)
+        public_scope["path"] = "/mcp"
+        public_scope["raw_path"] = b"/mcp"
+        await _public_app(public_scope, receive, send_public)
         return
     if path not in ("/mcp", "/api/index", "/internal/eap-node", "/api/internal"):
         await _send_json(send, 404, {"ok": False, "error": "Not found"})
@@ -81,6 +179,8 @@ async def app(scope, receive, send):
         await response(internal_scope, receive, send)
         return
 
+    if await _reject_unsupported_sse_get(scope, send):
+        return
     mcp_scope = dict(scope)
     mcp_scope["path"] = "/mcp"
     mcp_scope["raw_path"] = b"/mcp"

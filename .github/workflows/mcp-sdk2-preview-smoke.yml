@@ -1,0 +1,31 @@
+name: MCP SDK2 preview HTTP smoke (eap)
+on:
+  push:
+    branches: [feat/mcp2-dual-protocol-20261030]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MCP_TARGET: eap
+      # Temporary immutable preview snapshot. Never point this at production.
+      MCP_BASE_URL: https://arquimedes-mcp-ms50mrw5o-rafael-5864.vercel.app
+      MCP_REQUIRE_MODERN: "1"
+      MCP_REPORT_PATH: artifacts/sdk2-preview-eap.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Remote MCP legacy and 2026-07-28 checks
+        run: python scripts/check_public_mcp.py
+      - name: Persist audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk2-preview-eap
+          path: artifacts/sdk2-preview-eap.json
+          if-no-files-found: warn
