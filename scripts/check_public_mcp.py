@@ -115,7 +115,7 @@ def legacy_protocol():
 
 
 def discover_public():
-    status, data = request("/public-mcp")
+    status, data = request("/public-mcp", headers={"Accept": "application/json"})
     must(status == 200 and data.get("auth") == "none", f"Unexpected discovery: {status}, {data}")
     return data.get("transport")
 
@@ -191,8 +191,7 @@ def domain_cases():
     raise ValueError(f"Unsupported target {TARGET!r}")
 
 
-def probe_modern():
-    global MODERN
+def modern_request(method, params=None, *, tool_name=None):
     meta = {
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {},
@@ -200,17 +199,48 @@ def probe_modern():
             "name": "arquimedes-interop-smoke", "version": "1.0",
         },
     }
-    payload = {
-        "jsonrpc": "2.0", "id": 2, "method": "server/discover",
-        "params": {"_meta": meta},
-    }
-    status, result = request("/public-mcp", payload, headers={
-        "MCP-Protocol-Version": "2026-07-28",
-        "Mcp-Method": "server/discover",
-    })
-    MODERN = status == 200 and isinstance(result.get("result"), dict)
-    return {"supported": MODERN, "http_status": status,
-            "error": str(result.get("error", ""))[:160]}
+    p = dict(params or {})
+    p["_meta"] = meta
+    headers = {"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": method}
+    if tool_name is not None:
+        headers["Mcp-Name"] = tool_name
+    payload = {"jsonrpc": "2.0", "id": 2, "method": method, "params": p}
+    return request("/public-mcp", payload, headers=headers)
+
+
+def probe_modern():
+    global MODERN
+    status, result = modern_request("server/discover")
+    if status != 200 or not isinstance(result.get("result"), dict):
+        return {"supported": False, "http_status": status,
+                "error": str(result.get("error", ""))[:200]}
+    try:
+        status, listed = modern_request("tools/list")
+        must(status == 200 and "result" in listed, f"Modern tools/list failed: {status}, {listed}")
+        names = {t["name"] for t in listed["result"]["tools"]}
+        must(EXPECTED[TARGET] <= names, f"Modern tool inventory incomplete: {sorted(names)}")
+        name, arguments = {
+            "eap": ("validar_estrutura_eap", {"nos": [
+                {"eap_id": "1", "parent_id": None, "nivel": 1}]}),
+            "cronograma": ("calcular_duracao_com_evidencia", {
+                "quantidade": 12, "produtividade": 3, "unidade": "m2",
+                "unidade_produtividade": "m2"}),
+            "gantt_lob": ("dimensionar_equipes_lob", {
+                "tempo_unitario": 6, "ritmo_desejado": 2}),
+        }[TARGET]
+        status, response = modern_request("tools/call", {
+            "name": name, "arguments": arguments}, tool_name=name)
+        must(status == 200 and "result" in response, f"Modern tools/call failed: {status}, {response}")
+        value = unwrap(response["result"])
+        expected = {"eap": ("ok", True), "cronograma": ("duracaoDias", 4),
+                    "gantt_lob": ("numero_equipes", 3)}[TARGET]
+        must(value.get(expected[0]) == expected[1], f"Modern calculation failed: {value}")
+    except Exception as exc:
+        return {"supported": False, "http_status": status, "error": str(exc)[:250],
+                "phase": "modern_tools"}
+    MODERN = True
+    return {"supported": True, "http_status": 200,
+            "verified": ["server/discover", "tools/list", "tools/call"]}
 
 
 def main():
