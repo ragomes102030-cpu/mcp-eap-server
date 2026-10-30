@@ -31,5 +31,7 @@ jobs:
           python -c "import public_mcp; import server; import api.index; print('Both MCP apps import successfully')"
       - name: Validate real legacy and modern MCP JSON-RPC locally
         run: python -m pytest tests/test_public_mcp_dual_protocol.py -q -s
+      # ASGI MCP lifespan case already runs independently in preceding step.
+      # A repeated launch in the same workflow may deadlock during shutdown.
       - name: Run legacy project unit and integration suite
-        run: python -m pytest tests/ -vv --timeout=90 --timeout-method=thread --disable-warnings --maxfail=1
+        run: python -m pytest tests/ --ignore=tests/test_public_mcp_dual_protocol.py -vv --timeout=90 --timeout-method=thread --disable-warnings --maxfail=1
