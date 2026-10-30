@@ -32,7 +32,7 @@ def test_scope_reference_omission_then_exact_full_coverage(db, record_property):
     record_property("expected", '{"initial_coverage":50,"final_coverage":100}')
     record_property("obtained", f'{{"initial_coverage":{partial["percentual_cobertura"]},"final_coverage":{full["percentual_cobertura"]}}}')
     record_property("difference", "0")
-    record_property("tolerance", "0"
+    record_property("tolerance", "0")
 
 
 def test_primary_scope_binding_cannot_be_silently_reassigned(db):
