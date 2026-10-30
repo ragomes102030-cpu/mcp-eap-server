@@ -106,7 +106,7 @@ def vincular_escopo_eap(
         if not scope:
             raise ValueError("item de escopo não encontrado no projeto.")
         if not node:
-            raise ValueError("nó EAP não encontrado no projeto.")
+            raise ValueError("Nó EAP não encontrado no projeto.")
         if papel == "principal":
             existente = conn.execute(
                 """SELECT scope_id FROM eap_scope_coverage
