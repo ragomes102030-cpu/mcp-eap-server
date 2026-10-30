@@ -67,6 +67,20 @@ async def _lifespan_both(receive, send):
         await send({"type": "lifespan.startup.failed", "message": str(exc)})
 
 
+async def _reject_unsupported_sse_get(scope, send):
+    """GET listener SSE is optional in MCP; serverless must not hold it open."""
+    if scope.get("method") != "GET":
+        return False
+    headers = {key.lower(): val for key, val in scope.get("headers", [])}
+    if b"text/event-stream" not in headers.get(b"accept", b""):
+        return False
+    await send({"type": "http.response.start", "status": 405,
+                "headers": [(b"allow", b"POST, OPTIONS"),
+                            (b"cache-control", b"no-store")]})
+    await send({"type": "http.response.body", "body": b""})
+    return True
+
+
 async def app(scope, receive, send):
     if scope["type"] == "lifespan":
         await _lifespan_both(receive, send)
@@ -103,6 +117,8 @@ async def app(scope, receive, send):
                                     (b"cache-control", b"no-store")]})
             await send({"type": "http.response.body", "body": b""})
             return
+        if await _reject_unsupported_sse_get(scope, send):
+            return
         public_scope = dict(scope)
         public_scope["path"] = "/mcp"
         public_scope["raw_path"] = b"/mcp"
@@ -131,6 +147,8 @@ async def app(scope, receive, send):
         await response(internal_scope, receive, send)
         return
 
+    if await _reject_unsupported_sse_get(scope, send):
+        return
     mcp_scope = dict(scope)
     mcp_scope["path"] = "/mcp"
     mcp_scope["raw_path"] = b"/mcp"
