@@ -38,6 +38,13 @@ def test_public_cors_preflight_and_private_isolation():
         assert initialize.status_code == 200, initialize.text[:400]
         assert initialize.headers["access-control-allow-origin"] == "*"
 
+        denied = client.options("/public-mcp", headers={
+            "Origin": "https://unapproved-browser.example",
+            "Access-Control-Request-Method": "POST",
+        })
+        assert denied.status_code == 403
+        assert "access-control-allow-origin" not in denied.headers
+
         private_probe = client.options("/mcp", headers={
             "Origin": "https://independent-client.example",
             "Access-Control-Request-Method": "POST",
