@@ -14,7 +14,7 @@ HOSTS = {
     "cronograma": "https://arquimedes-mcp-cronograma.vercel.app",
 }
 EXPECTED = {
-    "eap": {"avaliar_evidencia_eap", "validar_estrutura_eap"},
+    "eap": {"avaliar_evidencia_eap", "validar_estrutura_eap", "propor_eap_por_prompt"},
     "cronograma": {"calcular_duracao_com_evidencia", "calcular_cpm_com_evidencia"},
 }
 
