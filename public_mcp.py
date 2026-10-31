@@ -96,6 +96,21 @@ def validar_estrutura_eap(nos: list[dict]) -> dict:
             "origem": "dados_da_chamada", "persistido": False,
             "nota": "Validacao estrutural preliminar; regra de 100% requer escopo contratado para conferencia."}
 
+@public_mcp.tool()
+def propor_eap_por_prompt(prompt: str, entregas: list[dict], project_ref: str = "rascunho",
+                          version_ref: str = "proposta-1") -> dict:
+    """Prepara proposta EAP a partir de prompt interpretado pelo agente e entregas/pacotes fornecidos.
+
+    O agente interpreta a linguagem natural e preenche 'entregas', cada uma com
+    'nome' e 'pacotes' (lista de objetos com 'nome', dicionario opcional).
+    O servidor nao executa LLM, nao inventa escopo e nao persiste dados.
+    """
+    from eap_prompt_assistant import propor_eap
+    try:
+        return propor_eap(prompt, entregas, project_ref=project_ref, version_ref=version_ref)
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "erro": str(exc), "persistido": False}
+
 public_app = public_mcp.streamable_http_app(
     stateless_http=True,
     json_response=True,
