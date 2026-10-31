@@ -1,0 +1,20 @@
+name: Arquimedes EAP contract v1
+on:
+  push:
+    branches:
+      - feat/arquimedes-eap-contract-v1-20261030
+  pull_request:
+    paths:
+      - 'arquimedes_eap_contract.py'
+      - 'test_arquimedes_eap_contract.py'
+      - '.github/workflows/eap-contract-v1.yml'
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test independent EAP contract
+        run: python -m unittest -v test_arquimedes_eap_contract.py
