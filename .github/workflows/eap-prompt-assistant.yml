@@ -1,0 +1,15 @@
+name: EAP prompt assistant
+on:
+  push:
+    branches: [feat/eap-prompt-assistant-20261030]
+  pull_request:
+    paths: ['eap_prompt_assistant.py', 'public_mcp.py', 'test_eap_prompt_assistant.py', '.github/workflows/eap-prompt-assistant.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest -v test_arquimedes_eap_contract.py test_eap_prompt_assistant.py
