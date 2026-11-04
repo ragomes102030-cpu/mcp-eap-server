@@ -621,10 +621,15 @@ def definir_criterio(
             return schemas.ErroOutput(erro="Informe 'uid' ou 'eap_id'.").model_dump()
         if node is None:
             return schemas.ErroOutput(erro="Nó não encontrado no projeto.").model_dump()
-        campos = {k: v for k, v in {
+        campos = {k: v.strip() if isinstance(v, str) else v for k, v in {
             "descricao": descricao, "criterio_medicao": criterio_medicao,
             "responsavel": responsavel, "disciplina": disciplina,
         }.items() if v is not None}
+        vazios = [campo for campo, valor in campos.items() if not valor]
+        if vazios:
+            return schemas.ErroOutput(
+                erro="Campos do dicionário não podem ser vazios: " + ", ".join(vazios)
+            ).model_dump()
         if not campos:
             return schemas.ErroOutput(
                 erro="Informe ao menos um campo (descricao, criterio_medicao, responsavel, disciplina)."
