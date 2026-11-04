@@ -601,6 +601,9 @@ def definir_criterio(
     project_id: Annotated[str | None, Field(description="Projeto (obra). Omitir = 'default'.", examples=["default"])] = None,
     descricao: Annotated[str | None, Field(description="Dicionário do pacote: o que está (e não está) incluído.")] = None,
     criterio_medicao: Annotated[str | None, Field(description="Critério de medição (vãos descontados, perdas, faixas).")] = None,
+    inclusoes: Annotated[str | None, Field(description="Serviços e entregáveis incluídos no pacote.")] = None,
+    exclusoes: Annotated[str | None, Field(description="Serviços e entregáveis excluídos do pacote.")] = None,
+    criterio_aceitacao: Annotated[str | None, Field(description="Critérios objetivos para aceitar a entrega do pacote.")] = None,
     responsavel: Annotated[str | None, Field(description="Dono/OBS do pacote (quem executa e é cobrado).")] = None,
     disciplina: Annotated[str | None, Field(description="Disciplina técnica (civil, eletrica, hidraulica...).")] = None,
 ) -> dict[str, Any]:
@@ -623,6 +626,8 @@ def definir_criterio(
             return schemas.ErroOutput(erro="Nó não encontrado no projeto.").model_dump()
         campos = {k: v.strip() if isinstance(v, str) else v for k, v in {
             "descricao": descricao, "criterio_medicao": criterio_medicao,
+            "inclusoes": inclusoes, "exclusoes": exclusoes,
+            "criterio_aceitacao": criterio_aceitacao,
             "responsavel": responsavel, "disciplina": disciplina,
         }.items() if v is not None}
         vazios = [campo for campo, valor in campos.items() if not valor]
@@ -632,7 +637,7 @@ def definir_criterio(
             ).model_dump()
         if not campos:
             return schemas.ErroOutput(
-                erro="Informe ao menos um campo (descricao, criterio_medicao, responsavel, disciplina)."
+                erro="Informe ao menos um campo do dicionário ou responsável."
             ).model_dump()
         novo = models.atualizar_nodo(node["eap_id"], {**campos, "project_id": pid})
         return schemas.EAPNodeOutput.model_validate(novo).model_dump()
