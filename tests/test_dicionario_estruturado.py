@@ -11,10 +11,10 @@ def test_dicionario_estruturado_persistencia(tmp_path):
 import models
 from pathlib import Path
 from schemas import EAPNodeOutput
+models.DB_PATH = Path(os.environ["EAP_DB_PATH"])
 models.init_db()
 pid = "qa-dicionario-estruturado"
 models.criar_projeto(project_id=pid, nome="QA Dicionário")
-node = models.inserir_nodo({"project_id": pid, "eap_id": "1", "parent_id": None, "nivel": 1, "tipo_frente": "estrutura", "nome": "Estrutura"})
 updated = models.atualizar_nodo("1", {"project_id": pid, "inclusoes": "Formas e armação", "exclusoes": "Pintura", "criterio_aceitacao": "Inspeção aprovada"})
 out = EAPNodeOutput.model_validate(updated).model_dump()
 assert out["inclusoes"] == "Formas e armação"
