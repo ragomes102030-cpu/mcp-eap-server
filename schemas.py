@@ -145,6 +145,9 @@ class EAPNodeOutput(BaseModel):
         title="Descrição",
         description="Dicionário do pacote: o que está (e não está) incluído.",
     )
+    inclusoes: Optional[str] = Field(default=None, description="Itens incluídos no pacote.")
+    exclusoes: Optional[str] = Field(default=None, description="Itens explicitamente excluídos do pacote.")
+    criterio_aceitacao: Optional[str] = Field(default=None, description="Condições objetivas para aceite do pacote.")
     criterio_medicao: Optional[str] = Field(
         default=None,
         title="Critério de medição",
