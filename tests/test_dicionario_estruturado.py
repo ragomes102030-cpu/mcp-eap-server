@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_dicionario_estruturado_persistencia(tmp_path):
     script = r"""
+import os
 import models
 from pathlib import Path
 from schemas import EAPNodeOutput
