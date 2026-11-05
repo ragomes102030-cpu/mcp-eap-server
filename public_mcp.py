@@ -36,7 +36,7 @@ def avaliar_evidencia_eap(itens: list[dict]) -> dict:
         "quantidade": sum(positivo(i.get("quantidade")) for i in itens),
         "produtividade": sum(positivo(i.get("produtividade")) for i in itens),
         "fonte": sum(bool(str(i.get("fonte") or "").strip()) for i in itens),
-        "dicionario_minimo": sum(bool(str(i.get("responsavel") or "").strip()) and bool(str(i.get("criterio_aceite") or "").strip()) for i in itens),
+        "dicionario_minimo": sum(bool(str(i.get("responsavel") or "").strip()) and bool(str(i.get("criterio_aceitacao") or i.get("criterio_aceite") or "").strip()) for i in itens),
     }
     return {
         "total": n,
