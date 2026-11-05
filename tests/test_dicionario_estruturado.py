@@ -31,3 +31,15 @@ assert models.buscar_por_eap_id("1", pid)["inclusoes"] == "Formas e armação"
     env["EAP_DB_PATH"] = str(tmp_path / "qa_eap.db")
     result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_auditoria_aceita_criterio_estruturado_e_legado():
+    from server import avaliar_evidencia_eap
+
+    base = {"quantidade": 1, "produtividade": 1, "fonte": "QA", "responsavel": "Engenheiro QA"}
+    novo = avaliar_evidencia_eap([{**base, "criterio_aceitacao": "Inspecao aprovada"}])
+    assert novo["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
+    legado = avaliar_evidencia_eap([{**base, "criterio_aceite": "Inspecao aprovada"}])
+    assert legado["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
+    sem_responsavel = avaliar_evidencia_eap([{**base, "responsavel": "", "criterio_aceitacao": "Inspecao aprovada"}])
+    assert sem_responsavel["cobertura"]["dicionario_minimo"]["preenchidos"] == 0
