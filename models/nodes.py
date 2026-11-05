@@ -305,7 +305,7 @@ def atualizar_nodo(eap_id: str, dados: dict[str, Any]) -> dict[str, Any]:
     campos = []
     valores = []
     for campo in ["frente_id", "local_id", "tipo_frente", "nome",
-                  "descricao", "criterio_medicao", "responsavel", "disciplina",
+                  "descricao", "criterio_medicao", "inclusoes", "exclusoes", "criterio_aceitacao", "responsavel", "disciplina",
                   "nao_aplicavel", "motivo_na", "status", "revisao", "motivo",
                   "origem_uid"]:
         if campo in dados:

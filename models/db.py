@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS eap_node (
     quantidade   REAL,
     descricao    TEXT,
     criterio_medicao TEXT,
+    inclusoes TEXT,
+    exclusoes TEXT,
+    criterio_aceitacao TEXT,
     responsavel  TEXT,
     disciplina   TEXT,
     nao_aplicavel INTEGER,
@@ -328,7 +331,7 @@ def _migrar_registrar_projetos() -> None:
 # Migrações incrementais (idempotentes)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_COLUNAS_F13 = ("descricao", "criterio_medicao", "responsavel", "disciplina")
+_COLUNAS_F13 = ("descricao", "criterio_medicao", "responsavel", "disciplina", "inclusoes", "exclusoes", "criterio_aceitacao")
 _COLUNAS_F14 = (("nao_aplicavel", "INTEGER"), ("motivo_na", "TEXT"))
 _COLUNAS_F16 = (
     ("status", "TEXT"), ("revisao", "INTEGER"),
