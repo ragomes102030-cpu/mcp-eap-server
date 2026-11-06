@@ -1,0 +1,61 @@
+name: EAP QA dicionario Turso descartavel
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "tests/test_dicionario_estruturado.py"
+      - "tests/test_dicionario_turso_qa_descartavel.py"
+      - ".github/workflows/eap-qa-dicionario-turso.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guardas-e-sqlite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Regressao EAP e verificacao das travas do ambiente QA
+        run: >-
+          python -m pytest
+          tests/test_dicionario_estruturado.py
+          tests/test_dicionario_turso_qa_descartavel.py
+          -m "not remote_turso" -q
+
+  persistencia-remota:
+    if: github.event_name == 'workflow_dispatch'
+    needs: guardas-e-sqlite
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: eap-qa-disposable
+    env:
+      EAP_QA_TURSO_URL: ${{ secrets.EAP_QA_TURSO_URL }}
+      EAP_QA_TURSO_TOKEN: ${{ secrets.EAP_QA_TURSO_TOKEN }}
+      EAP_PROD_TURSO_URL: ${{ vars.EAP_PROD_TURSO_URL }}
+      EAP_QA_REMOTE_CONFIRM: YES_DISPOSABLE_WRITES
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Exigir credenciais exclusivas de QA e hostname de producao
+        shell: bash
+        run: |
+          test -n "$EAP_QA_TURSO_URL" || { echo "::error::Turso QA URL nao configurada"; exit 1; }
+          test -n "$EAP_QA_TURSO_TOKEN" || { echo "::error::Turso QA token nao configurado"; exit 1; }
+          test -n "$EAP_PROD_TURSO_URL" || { echo "::error::Hostname producao nao configurado"; exit 1; }
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Confirmar gravacao, novo processo, leitura e limpeza apenas em Turso QA
+        run: >-
+          python -m pytest
+          tests/test_dicionario_turso_qa_descartavel.py
+          -m remote_turso -q -rs
