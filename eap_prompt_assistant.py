@@ -11,8 +11,8 @@ def propor_eap(prompt: str, entregas: list[dict[str, Any]], *,
                project_ref: str = "rascunho", version_ref: str = "proposta-1") -> dict[str, Any]:
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
         raise ValueError("Prompt obrigatorio, ate 12000 caracteres")
-    if not isinstance(entregas, list) or not (1 <= len(entregas) <= 60):
-        raise ValueError("Informe de 1 a 60 entregas interpretadas pelo agente")
+    if not isinstance(entregas, list) or not (1 <= len(entregas) <= 70):
+        raise ValueError("Informe de 1 a 70 entregas interpretadas pelo agente")
     if not isinstance(project_ref, str) or not project_ref.strip() or not isinstance(version_ref, str) or not version_ref.strip():
         raise ValueError("Projeto e versao devem ser identificados")
     nodes = [{"code": "1", "parentCode": None, "name": "Escopo da obra", "nodeType": "grupo", "level": 1}]
@@ -45,8 +45,8 @@ def propor_eap(prompt: str, entregas: list[dict[str, Any]], *,
                 if source in pacote and pacote[source] is not None:
                     node[dest] = pacote[source]
             nodes.append(node)
-    if len(nodes) > 150:
-        raise ValueError("Proposta excede limite de 150 nos")
+    if len(nodes) > 2000:
+        raise ValueError("Proposta excede limite de 2000 nos")
     payload = {"projectRef": project_ref.strip(), "versionRef": version_ref.strip(), "nodes": nodes}
     result = audit_contract(from_platform_payload(payload))
     return {"ok": result.structural_valid, "contrato": "arquimedes.eap.v1",
