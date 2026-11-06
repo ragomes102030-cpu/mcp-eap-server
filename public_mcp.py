@@ -15,7 +15,7 @@ public_mcp = MCPServer(
 
 )
 
-def _limitar(itens: list[dict], *, maximo: int = 150) -> None:
+def _limitar(itens: list[dict], *, maximo: int = 2000) -> None:
     if not isinstance(itens, list) or len(itens) > maximo:
         raise ValueError(f"Limite de {maximo} itens por chamada.")
     if not all(isinstance(item, dict) for item in itens):

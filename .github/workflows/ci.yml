@@ -34,3 +34,6 @@ jobs:
       - name: Baterias funcionais de integracao (servidor MCP isolado)
         run: |
           python -m pytest tests/test_baterias_ci.py -q -m integracao
+
+      - name: Escala MCP EAP em memoria (sem banco)
+        run: python -m pytest tests/test_public_scale_2000.py -q
