@@ -76,10 +76,28 @@ class TestDualProtocol(unittest.TestCase):
             self.assertIn("serverInfo", legacy)
             legacy_tools = self.rpc(client, "tools/list", {})
             self.assertEqual({t["name"] for t in legacy_tools["tools"]}, EXPECTED[TARGET])
+            if TARGET == "eap":
+                evaluator = next(t for t in legacy_tools["tools"]
+                                 if t["name"] == "avaliar_evidencia_eap")
+                schema = evaluator["inputSchema"]
+                item_schema = schema["properties"]["itens"]["items"]
+                if "$ref" in item_schema:
+                    item_schema = schema["$defs"][item_schema["$ref"].rsplit("/", 1)[-1]]
+                self.assertIn("quantidade", item_schema.get("properties", {}), item_schema)
+                self.assertFalse(item_schema.get("additionalProperties", True), item_schema)
             modern = self.rpc(client, "server/discover", {}, modern=True)
             self.assertIn("2026-07-28", modern.get("supportedVersions", []))
             modern_tools = self.rpc(client, "tools/list", {}, modern=True)
             self.assertEqual({t["name"] for t in modern_tools["tools"]}, EXPECTED[TARGET])
+            if TARGET == "eap":
+                evaluator = next(t for t in modern_tools["tools"]
+                                 if t["name"] == "avaliar_evidencia_eap")
+                schema = evaluator["inputSchema"]
+                item_schema = schema["properties"]["itens"]["items"]
+                if "$ref" in item_schema:
+                    item_schema = schema["$defs"][item_schema["$ref"].rsplit("/", 1)[-1]]
+                self.assertIn("quantidade", item_schema.get("properties", {}), item_schema)
+                self.assertFalse(item_schema.get("additionalProperties", True), item_schema)
             if TARGET == "eap":
                 name = "validar_estrutura_eap"
                 args = {"nos": [{"eap_id": "1", "parent_id": None, "nivel": 1}]}
