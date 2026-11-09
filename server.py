@@ -49,6 +49,7 @@ from starlette.routing import Route
 
 import models
 import schemas
+from eap_evidence_contract import ItemEvidenciaEapPublica, auditar_cobertura_evidencias
 from observability import log_tool_call
 
 logger = logging.getLogger(__name__)
@@ -906,15 +907,13 @@ def main() -> None:
 
 @mcp.tool()
 def avaliar_evidencia_eap(
-    itens: list[dict],
+    itens: list[ItemEvidenciaEapPublica],
 ) -> dict[str, Any]:
-    """Avalia cobertura técnica dos pacotes da EAP sem inventar dados."""
-    total = len(itens)
-    com_quantidade = sum(1 for x in itens if x.get("quantidade") is not None and float(x.get("quantidade") or 0) > 0)
-    com_produtividade = sum(1 for x in itens if x.get("produtividade") is not None and float(x.get("produtividade") or 0) > 0)
-    com_fonte = sum(1 for x in itens if str(x.get("fonte") or "").strip())
-    com_dicionario = sum(1 for x in itens if str(x.get("responsavel") or "").strip() and str(x.get("criterio_aceitacao") or x.get("criterio_aceite") or "").strip())
-    return {"total": total, "cobertura": {"quantidade":{"preenchidos":com_quantidade,"total":total},"produtividade":{"preenchidos":com_produtividade,"total":total},"fonte":{"preenchidos":com_fonte,"total":total},"dicionario_minimo":{"preenchidos":com_dicionario,"total":total}}, "lacunas": [x for x in ["quantidade" if com_quantidade<total else None,"produtividade" if com_produtividade<total else None,"fonte" if com_fonte<total else None,"dicionario_minimo" if com_dicionario<total else None] if x], "regra":"lacuna de cobertura não é bloqueio estrutural por si só; não inventar quantidade, produtividade ou fonte"}
+    """Avalia cobertura técnica pelos campos documentados em eap_evidence_contract."""
+    return {
+        **auditar_cobertura_evidencias(itens),
+        "regra": "lacuna de cobertura não é bloqueio estrutural por si só; não inventar quantidade, produtividade ou fonte",
+    }
 
 if __name__ == "__main__":
     main()

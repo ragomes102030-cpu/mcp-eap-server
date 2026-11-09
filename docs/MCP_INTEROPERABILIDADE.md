@@ -1,19 +1,30 @@
 # MCP EAP — contrato público, interoperabilidade e segurança
 
-Data da revisão: 2026-10-30. Este documento descreve uma branch em validação;
-a URL de produção pode estar numa revisão anterior. Confira o commit publicado
-antes de afirmar que alguma funcionalidade nova está em produção.
+Data da revisão: 2026-11-09. O contrato descrito para `avaliar_evidencia_eap` é a mudança local em validação; confira o commit publicado antes de afirmar que a URL de produção já o oferece.
 
 ## Como conectar um cliente MCP
 
 - Transporte: **Streamable HTTP**.
 - Endpoint público: `https://arquimedes-mcp-eap.vercel.app/public-mcp`.
 - Autenticação: nenhuma; **somente cálculos/auditorias sem persistência**.
-- Ferramentas anunciadas: **2: validar_estrutura_eap, avaliar_evidencia_eap**.
+- Ferramentas anunciadas: **3: avaliar_evidencia_eap, validar_estrutura_eap, propor_eap_por_prompt**.
 - Clientes não precisam de plugin específico de ChatGPT: a conexão é via protocolo MCP.
   A interface e o suporte a conectores HTTP variam entre aplicações.
 - Um GET simples pode retornar JSON de diagnóstico. Isto **não substitui**
   `initialize` ou `server/discover`, `tools/list` e `tools/call`.
+
+## Contrato de entrada — `avaliar_evidencia_eap`
+
+`tools/list` publica um schema fechado por item. Os campos são opcionais para permitir auditoria parcial sem inventar evidências; campos desconhecidos são rejeitados. O avaliador reconhece os nomes canônicos em português e os aliases indicados:
+
+- Quantidade: `quantidade`, `plannedQuantity` ou `quantity`.
+- Produtividade: `produtividade` ou `productivity`.
+- Fonte: `fonte` ou `source`; cada campo aceita texto ou lista de referências textuais.
+- Unidade: `unidade` / `quantityUnit` e `unidade_produtividade` / `productivityUnit` são descritos para interoperabilidade, mas a cobertura não compara compatibilidade entre unidades.
+- Dicionário mínimo: responsável (`responsavel` / `responsible`) e critério de aceitação (`criterio_aceitacao`, `criterio_aceite` / `acceptanceCriteria`), na raiz ou dentro de `dicionario` / `dictionary`.
+- O dicionário também descreve código, descrição, unidade, critério de medição, localização, inclusões, exclusões, disciplina e fontes. O preenchimento desses campos adicionais não substitui responsável e critério de aceitação no indicador mínimo.
+
+O resultado mede apenas presença de quantidade/produtividade positivas, texto de fonte e os dois campos mínimos do dicionário. Não confirma que uma prancha está aprovada, que quantidade ou produtividade estão corretas, que as unidades são compatíveis, nem que a EAP cobre 100% do escopo. `persistido: false` significa que a chamada não grava dados.
 
 ## Compatibilidade
 

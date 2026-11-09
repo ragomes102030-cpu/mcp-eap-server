@@ -1,11 +1,11 @@
 """Isolated, stateless PUBLIC MCP: no Turso reads or writes, no project enumeration."""
 from __future__ import annotations
 
-import math
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp_http_security import allowed_mcp_hosts
 from mcp_public_origins import allowed_public_origins
+from eap_evidence_contract import ItemEvidenciaEapPublica, auditar_cobertura_evidencias
 
 public_mcp = MCPServer(
     name="arquimedes-eap-publico",
@@ -22,26 +22,11 @@ def _limitar(itens: list[dict], *, maximo: int = 2000) -> None:
         raise ValueError("Todos os itens devem ser objetos.")
 
 @public_mcp.tool()
-def avaliar_evidencia_eap(itens: list[dict]) -> dict:
-    """Audita quantitativos, produtividade, fontes e dicionario de pacotes enviados. Sem banco."""
+def avaliar_evidencia_eap(itens: list[ItemEvidenciaEapPublica]) -> dict:
+    """Audita campos documentados em eap_evidence_contract; dados ficam apenas na chamada."""
     _limitar(itens)
-    def positivo(x: object) -> bool:
-        try:
-            valor = float(x)
-            return math.isfinite(valor) and valor > 0
-        except (ValueError, TypeError):
-            return False
-    n = len(itens)
-    checks = {
-        "quantidade": sum(positivo(i.get("quantidade")) for i in itens),
-        "produtividade": sum(positivo(i.get("produtividade")) for i in itens),
-        "fonte": sum(bool(str(i.get("fonte") or "").strip()) for i in itens),
-        "dicionario_minimo": sum(bool(str(i.get("responsavel") or "").strip()) and bool(str(i.get("criterio_aceitacao") or i.get("criterio_aceite") or "").strip()) for i in itens),
-    }
     return {
-        "total": n,
-        "cobertura": {key: {"preenchidos": count, "total": n} for key, count in checks.items()},
-        "lacunas": [key for key, count in checks.items() if count < n],
+        **auditar_cobertura_evidencias(itens),
         "origem": "dados_da_chamada",
         "persistido": False,
         "observacao": "Nao inventa quantitativos, produtividades ou fontes.",
