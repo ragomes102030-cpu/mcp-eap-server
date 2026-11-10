@@ -29,6 +29,7 @@ def buffer_json_response(send):
             ]
             body = b"".join(body_parts)
             headers.append((b"content-length", str(len(body)).encode("ascii")))
+            headers.append((b"x-public-mcp-framing", b"buffered-v1"))
             await send(dict(response_start, headers=headers))
             # Vercel's ASGI bridge requires an explicit terminal marker. The
             # ASGI default is false, but omitting it leaves modern JSON replies
