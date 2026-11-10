@@ -41,7 +41,8 @@ def test_public_tool_schema_documents_evidence_fields():
     if "$ref" in item_schema:
         item_schema = schema["$defs"][item_schema["$ref"].rsplit("/", 1)[-1]]
     properties = item_schema["properties"]
-    assert {"quantidade", "plannedQuantity", "produtividade", "productivity", "fonte", "source",
+    assert {"id", "eap_id", "eapId", "externalId", "unit",
+            "quantidade", "plannedQuantity", "produtividade", "productivity", "fonte", "source",
             "unidade", "quantityUnit", "unidade_produtividade", "productivityUnit",
             "responsavel", "responsible", "criterio_aceitacao", "acceptanceCriteria", "dicionario"} <= set(properties)
     assert item_schema.get("additionalProperties") is False
@@ -49,10 +50,12 @@ def test_public_tool_schema_documents_evidence_fields():
     if "$ref" not in dictionary_schema:
         dictionary_schema = next(part for part in dictionary_schema.get("anyOf", []) if "$ref" in part)
     dictionary_schema = schema["$defs"][dictionary_schema["$ref"].rsplit("/", 1)[-1]]
-    assert {"codigo", "descricao", "unidade", "criterio_medicao", "localizacao",
+    assert {"codigo", "code", "descricao", "description", "unidade", "unit",
+            "criterio_medicao", "measurementCriterion", "localizacao", "location",
             "disciplina", "responsavel", "criterio_aceitacao", "discipline"} <= set(dictionary_schema["properties"])
 
     result = asyncio.run(public_mcp.call_tool("avaliar_evidencia_eap", {"itens": [{
+        "id": "HYD-A-LEVEL-02",
         "plannedQuantity": 12,
         "quantityUnit": "m",
         "productivity": 3,

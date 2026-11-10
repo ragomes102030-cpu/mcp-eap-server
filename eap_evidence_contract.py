@@ -49,7 +49,6 @@ class DicionarioEapPublico(TypedDict, total=False):
     responsible: Annotated[str | None, Field(description="Package owner (camelCase contract alias).")]
     inclusions: Annotated[str | None, Field(description="Included work (camelCase contract alias).")]
     exclusions: Annotated[str | None, Field(description="Excluded work (camelCase contract alias).")]
-    discipline: Annotated[str | None, Field(description="Technical discipline (camelCase contract alias).")]
     source: Annotated[str | list[str] | None, Field(description="Drawing, revision or record supporting the item (camelCase alias).")]
 
 

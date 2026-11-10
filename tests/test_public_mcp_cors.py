@@ -4,9 +4,13 @@ from starlette.testclient import TestClient
 from api.index import app
 
 
-def test_public_cors_preflight_and_private_isolation():
+def test_public_cors_preflight_and_private_isolation(monkeypatch):
+    monkeypatch.setenv("MCP_PUBLIC_ALLOWED_ORIGINS", "https://independent-client.example")
     base_url = "https://arquimedes-mcp-eap.vercel.app"
-    with TestClient(app, base_url=base_url) as client:
+    # These routes do not need MCP session managers. Avoid starting the shared
+    # MCP app lifespan here so this test is order-independent with protocol tests.
+    client = TestClient(app, base_url=base_url)
+    try:
         preflight = client.options("/public-mcp", headers={
             "Origin": "https://independent-client.example",
             "Access-Control-Request-Method": "POST",
@@ -45,3 +49,5 @@ def test_public_cors_preflight_and_private_isolation():
 
         health = client.get("/healthz", headers={"Origin": "https://independent-client.example"})
         assert "access-control-allow-origin" not in health.headers
+    finally:
+        client.close()
