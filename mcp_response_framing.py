@@ -30,7 +30,10 @@ def buffer_json_response(send):
             body = b"".join(body_parts)
             headers.append((b"content-length", str(len(body)).encode("ascii")))
             await send(dict(response_start, headers=headers))
-            await send({"type": "http.response.body", "body": body})
+            # Vercel's ASGI bridge requires an explicit terminal marker. The
+            # ASGI default is false, but omitting it leaves modern JSON replies
+            # advertised as chunked without a terminating chunk on Vercel.
+            await send({"type": "http.response.body", "body": body, "more_body": False})
             body_parts.clear()
             response_start = None
             return

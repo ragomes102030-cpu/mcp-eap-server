@@ -142,8 +142,16 @@ def private_is_protected():
 def domain_cases():
     if TARGET == "eap":
         evidence = call("avaliar_evidencia_eap", {"itens": [{
-            "quantidade": 12, "produtividade": 3, "fonte": "caso-sintetico",
-            "responsavel": "engenheiro", "criterio_aceite": "inspecao",
+            "id": "QA-EAP-001", "eap_id": "1.1",
+            "plannedQuantity": 12, "quantityUnit": "m",
+            "productivity": 3, "productivityUnit": "m/dia",
+            "source": ["QA-PRANCHA-001-R01"],
+            "dictionary": {
+                "code": "1.1", "description": "Serviço sintético de validação",
+                "unit": "m", "measurementCriterion": "Comprimento executado",
+                "location": "Trecho QA", "discipline": "civil",
+                "responsible": "Equipe QA", "acceptanceCriteria": "Inspeção registrada",
+            },
         }]})
         must(evidence["total"] == 1 and not evidence["lacunas"], f"Evidence failed: {evidence}")
         tree = call("validar_estrutura_eap", {"nos": [

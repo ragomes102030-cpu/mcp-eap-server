@@ -44,6 +44,7 @@ class TestPublicResponseFraming(unittest.TestCase):
         self.assertNotIn(b"transfer-encoding", headers)
         self.assertEqual(headers[b"content-length"], str(len(expected_body)).encode())
         self.assertEqual(response_body["body"], expected_body)
+        self.assertIs(response_body["more_body"], False)
 
 
 if __name__ == "__main__":
