@@ -1,6 +1,6 @@
 # MCP EAP — contrato público, interoperabilidade e segurança
 
-Data da revisão: 2026-11-09. O contrato descrito para `avaliar_evidencia_eap` é a mudança local em validação; confira o commit publicado antes de afirmar que a URL de produção já o oferece.
+Data da revisão: 2026-11-09. A regra ampliada do dicionário mínimo e a cobertura explícita das unidades estão em validação local; não afirmar que a URL de produção já oferece essa regra antes de novo deployment e smoke.
 
 ## Como conectar um cliente MCP
 
@@ -20,17 +20,20 @@ Data da revisão: 2026-11-09. O contrato descrito para `avaliar_evidencia_eap` �
 - Quantidade: `quantidade`, `plannedQuantity` ou `quantity`.
 - Produtividade: `produtividade` ou `productivity`.
 - Fonte: `fonte` ou `source`; cada campo aceita texto ou lista de referências textuais.
-- Unidade: `unidade` / `quantityUnit` e `unidade_produtividade` / `productivityUnit` são descritos para interoperabilidade, mas a cobertura não compara compatibilidade entre unidades.
-- Dicionário mínimo: responsável (`responsavel` / `responsible`) e critério de aceitação (`criterio_aceitacao`, `criterio_aceite` / `acceptanceCriteria`), na raiz ou dentro de `dicionario` / `dictionary`.
-- O dicionário também descreve código, descrição, unidade, critério de medição, localização, inclusões, exclusões, disciplina e fontes. O preenchimento desses campos adicionais não substitui responsável e critério de aceitação no indicador mínimo.
+- Cobertura de unidade: quantidade (`unidade` / `quantityUnit`) e produtividade (`unidade_produtividade` / `productivityUnit`) são contadas separadamente; ainda não se verifica dimensionalmente se as unidades são compatíveis entre si.
+- Dicionário mínimo: código, descrição, critério de medição, localização e disciplina no dicionário; unidade, responsável e critério de aceitação podem estar no item ou no dicionário. Os aliases portugueses/ingleses são aceitos.
+- Inclusões, exclusões e fontes aninhadas continuam disponíveis; a fonte também pode ser enviada na raiz. Campos desconhecidos são rejeitados.
+- Marcadores de estado sem evidência (`PENDENTE`, `A CONFIRMAR`, `A DEFINIR`, `NAO_DECLARADA`, `SEM DADO`, `N/A` e aliases) não contam como campos preenchidos.
+- `itens_com_lacunas` identifica cada item incompleto por código, ID, fonte ou índice de entrada e lista as categorias ausentes; os totais agregados continuam em `cobertura`.
 
-O resultado mede apenas presença de quantidade/produtividade positivas, texto de fonte e os dois campos mínimos do dicionário. Não confirma que uma prancha está aprovada, que quantidade ou produtividade estão corretas, que as unidades são compatíveis, nem que a EAP cobre 100% do escopo. `persistido: false` significa que a chamada não grava dados.
+O resultado mede presença de quantidade e produtividade positivas, suas unidades, fonte rastreável e dicionário mínimo completo. Não confirma que uma prancha está aprovada, que quantidade, produtividade, critério ou aceite estão tecnicamente corretos, que as unidades são compatíveis, nem que a EAP cobre 100% do escopo. `persistido: false` significa que a chamada não grava dados. A validação de IDs/pais/níveis é ferramenta separada e não substitui esta auditoria.
 
 ## Compatibilidade
 
 - Famílias MCP 2025: handshake `initialize`.
-- MCP `2026-07-28`: `server/discover`, `tools/list`, `tools/call`,
-  cabeçalhos MCP e envelope de metadados por requisição.
+- MCP `2026-07-28`: a validação live em 09/11/2026 falhou — `server/discover` e
+  `tools/list` responderam HTTP 200 com corpo vazio no alias e no deployment direto.
+  Não considerar compatibilidade moderna aprovada até um smoke completo em produção.
 - Os testes independentes usam clientes oficiais **Python MCP 2.3.0**
   e **TypeScript MCP Client 2.4.0**, nos modos legado e moderno.
 - Esses testes confirmam o transporte entre SDKs, **não validam as interfaces

@@ -36,10 +36,18 @@ assert models.buscar_por_eap_id("1", pid)["inclusoes"] == "Formas e armação"
 def test_auditoria_aceita_criterio_estruturado_e_legado():
     from server import avaliar_evidencia_eap
 
-    base = {"quantidade": 1, "produtividade": 1, "fonte": "QA", "responsavel": "Engenheiro QA"}
-    novo = avaliar_evidencia_eap([{**base, "criterio_aceitacao": "Inspecao aprovada"}])
+    dicionario = {"codigo": "QA-1", "descricao": "Serviço QA", "unidade": "un",
+                  "criterio_medicao": "Contagem por unidade concluída", "localizacao": "Torre QA",
+                  "disciplina": "teste", "responsavel": "Engenheiro QA"}
+    base = {"quantidade": 1, "unidade": "un", "produtividade": 1,
+            "unidade_produtividade": "un/dia", "fonte": "QA", "dicionario": dicionario}
+    novo = avaliar_evidencia_eap([{**base, "dicionario": {**dicionario,
+                                 "criterio_aceitacao": "Inspecao aprovada"}}])
     assert novo["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
-    legado = avaliar_evidencia_eap([{**base, "criterio_aceite": "Inspecao aprovada"}])
+    legado = avaliar_evidencia_eap([{**base, "dicionario": {**dicionario,
+                                   "criterio_aceite": "Inspecao aprovada"}}])
     assert legado["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
-    sem_responsavel = avaliar_evidencia_eap([{**base, "responsavel": "", "criterio_aceitacao": "Inspecao aprovada"}])
+    sem_responsavel = avaliar_evidencia_eap([{**base, "dicionario": {**dicionario,
+                                              "responsavel": "",
+                                              "criterio_aceitacao": "Inspecao aprovada"}}])
     assert sem_responsavel["cobertura"]["dicionario_minimo"]["preenchidos"] == 0

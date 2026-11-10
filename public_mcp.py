@@ -23,7 +23,7 @@ def _limitar(itens: list[dict], *, maximo: int = 2000) -> None:
 
 @public_mcp.tool()
 def avaliar_evidencia_eap(itens: list[ItemEvidenciaEapPublica]) -> dict:
-    """Audita campos documentados em eap_evidence_contract; dados ficam apenas na chamada."""
+    """Audita quantidades, unidades, produtividade, fontes e dicionario minimo sem persistir dados."""
     _limitar(itens)
     return {
         **auditar_cobertura_evidencias(itens),

@@ -3,7 +3,16 @@ from public_mcp import avaliar_evidencia_eap
 
 
 def test_criterio_aceitacao_estruturado():
-    item = {"responsavel": "QA", "criterio_aceitacao": "Inspecao aprovada", "quantidade": 10, "produtividade": 2, "fonte": "QA"}
+    item = {
+        "quantidade": 10, "unidade": "m", "produtividade": 2,
+        "unidade_produtividade": "m/dia", "fonte": "QA",
+        "dicionario": {
+            "codigo": "1.2.3", "descricao": "Serviço de teste", "unidade": "m",
+            "criterio_medicao": "Comprimento instalado", "localizacao": "Torre A",
+            "disciplina": "estrutura", "responsavel": "QA",
+            "criterio_aceitacao": "Inspecao aprovada",
+        },
+    }
     result = avaliar_evidencia_eap([item])
     assert result["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
     assert result["lacunas"] == []
@@ -12,7 +21,8 @@ def test_criterio_aceitacao_estruturado():
 
 def test_criterio_aceite_legado():
     result = avaliar_evidencia_eap([{"responsavel": "QA", "criterio_aceite": "Aceito"}])
-    assert result["cobertura"]["dicionario_minimo"]["preenchidos"] == 1
+    assert result["cobertura"]["dicionario_minimo"]["preenchidos"] == 0
+    assert "dicionario_minimo" in result["lacunas"]
 
 
 def test_responsavel_obrigatorio():
@@ -32,6 +42,7 @@ def test_public_tool_schema_documents_evidence_fields():
         item_schema = schema["$defs"][item_schema["$ref"].rsplit("/", 1)[-1]]
     properties = item_schema["properties"]
     assert {"quantidade", "plannedQuantity", "produtividade", "productivity", "fonte", "source",
+            "unidade", "quantityUnit", "unidade_produtividade", "productivityUnit",
             "responsavel", "responsible", "criterio_aceitacao", "acceptanceCriteria", "dicionario"} <= set(properties)
     assert item_schema.get("additionalProperties") is False
     dictionary_schema = properties["dicionario"]
@@ -39,13 +50,18 @@ def test_public_tool_schema_documents_evidence_fields():
         dictionary_schema = next(part for part in dictionary_schema.get("anyOf", []) if "$ref" in part)
     dictionary_schema = schema["$defs"][dictionary_schema["$ref"].rsplit("/", 1)[-1]]
     assert {"codigo", "descricao", "unidade", "criterio_medicao", "localizacao",
-            "responsavel", "criterio_aceitacao"} <= set(dictionary_schema["properties"])
+            "disciplina", "responsavel", "criterio_aceitacao", "discipline"} <= set(dictionary_schema["properties"])
 
     result = asyncio.run(public_mcp.call_tool("avaliar_evidencia_eap", {"itens": [{
         "plannedQuantity": 12,
+        "quantityUnit": "m",
         "productivity": 3,
+        "productivityUnit": "m/dia",
         "source": ["FD639-EX-HID-014-R03"],
-        "dictionary": {"responsible": "Equipe de instalações",
+        "dictionary": {"code": "1.2.3", "description": "Instalação sanitária",
+                       "unit": "m", "measurementCriterion": "Comprimento instalado",
+                       "location": "Torre A", "discipline": "hidrossanitário",
+                       "responsible": "Equipe de instalações",
                        "acceptanceCriteria": "Ensaio aprovado"},
     }]}))
     assert not result.is_error
@@ -59,7 +75,9 @@ def test_aliases_and_nested_dictionary_are_audited_without_persistence():
 
     result = auditar_cobertura_evidencias([{
         "plannedQuantity": 12,
+        "quantityUnit": "m",
         "productivity": 3,
+        "productivityUnit": "m/dia",
         "source": ["FD639-EX-HID-014-R03"],
         "dictionary": {
             "code": "1.2.3",
@@ -67,6 +85,7 @@ def test_aliases_and_nested_dictionary_are_audited_without_persistence():
             "unit": "m",
             "measurementCriterion": "Medição por comprimento instalado e testado",
             "location": "Torre A, 2º ao 3º pavimento",
+            "discipline": "hidrossanitário",
             "responsible": "Equipe de instalações",
             "acceptanceCriteria": "Ensaio aprovado e registro de inspeção",
             "source": ["FD639-EX-HID-014-PLA_T2A-R03"],
@@ -103,6 +122,12 @@ def test_blank_root_fields_do_not_hide_nested_dictionary_evidence():
         "responsavel": "   ",
         "criterio_aceitacao": "   ",
         "dicionario": {
+            "code": "1.2.3",
+            "description": "Tubulação sanitária",
+            "unit": "m",
+            "measurementCriterion": "Comprimento instalado",
+            "location": "Torre A",
+            "discipline": "hidrossanitário",
             "source": ["FD639-EX-HID-014-PLA_T2A-R03"],
             "responsible": "Equipe hidráulica",
             "acceptanceCriteria": "Teste de estanqueidade registrado",
@@ -117,4 +142,5 @@ def test_empty_list_does_not_report_false_complete_coverage():
 
     result = auditar_cobertura_evidencias([])
     assert result["total"] == 0
-    assert result["lacunas"] == ["quantidade", "produtividade", "fonte", "dicionario_minimo"]
+    assert result["lacunas"] == ["quantidade", "produtividade", "unidade_quantidade",
+                                  "unidade_produtividade", "fonte", "dicionario_minimo"]
