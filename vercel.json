@@ -1,3 +1,30 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/public-mcp",
+      "destination": "/api/public_mcp"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/api/index?__vercel_original_path=/mcp"
+    },
+    {
+      "source": "/healthz",
+      "destination": "/api/index?__vercel_original_path=/healthz"
+    },
+    {
+      "source": "/api/healthz",
+      "destination": "/api/index?__vercel_original_path=/api/healthz"
+    },
+    {
+      "source": "/internal/eap-node",
+      "destination": "/api/index?__vercel_original_path=/internal/eap-node"
+    },
+    {
+      "source": "/api/internal",
+      "destination": "/api/index?__vercel_original_path=/api/internal"
+    }
+  ],
+  "framework": null
 }

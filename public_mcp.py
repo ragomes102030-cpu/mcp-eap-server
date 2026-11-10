@@ -96,12 +96,26 @@ def propor_eap_por_prompt(prompt: str, entregas: list[dict], project_ref: str = 
     except (ValueError, TypeError) as exc:
         return {"ok": False, "erro": str(exc), "persistido": False}
 
-public_app = public_mcp.streamable_http_app(
-    stateless_http=True,
-    json_response=True,
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_origins=allowed_public_origins(),
-        allowed_hosts=allowed_mcp_hosts("arquimedes-mcp-eap.vercel.app", "mcp-eap-server.onrender.com"),
-    ),
-)
+def create_public_app():
+    """Create a fresh stateless ASGI app for one isolated serverless request."""
+    request_server = MCPServer(
+        name="arquimedes-eap-publico",
+        instructions=("Modo publico de auditoria EAP. Somente analisa dados fornecidos "
+                     "na propria chamada, sem consultar, criar ou alterar projetos no banco. "
+                     "Para operacoes persistentes, use o MCP privado autenticado."),
+    )
+    request_server.add_tool(avaliar_evidencia_eap)
+    request_server.add_tool(validar_estrutura_eap)
+    request_server.add_tool(propor_eap_por_prompt)
+    return request_server.streamable_http_app(
+        stateless_http=True,
+        json_response=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_origins=allowed_public_origins(),
+            allowed_hosts=allowed_mcp_hosts("arquimedes-mcp-eap.vercel.app", "mcp-eap-server.onrender.com"),
+        ),
+    )
+
+
+public_app = create_public_app()

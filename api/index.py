@@ -1,13 +1,14 @@
-"""Authenticated, stateless ASGI adapter for Vercel Python Functions.
+"""Authenticated, stateless ASGI function routed from Vercel API paths.
 
-Root app.py explicitly imports this entrypoint, so server.py stays available
-for Render without triggering its SQLite startup side effects on Vercel.
+The Render server remains separate so its SQLite startup side effects do not
+run in the Vercel function.
 """
 from __future__ import annotations
 
 import hmac
 import json
 import os
+from urllib.parse import parse_qsl, urlencode
 from contextlib import AsyncExitStack
 
 from public_mcp import public_app as _public_app
@@ -114,6 +115,20 @@ async def app(scope, receive, send):
         return
     if scope["type"] != "http":
         return
+    # Explicit Vercel function routing sends requests through /api/index and
+    # carries the original path in a reserved query parameter.
+    query = scope.get("query_string", b"").decode("latin-1")
+    query_items = parse_qsl(query, keep_blank_values=True)
+    original_path = next((value for key, value in query_items
+                          if key == "__vercel_original_path"), "")
+    if original_path.startswith("/"):
+        scope = dict(scope)
+        scope["path"] = original_path
+        scope["raw_path"] = original_path.encode("utf-8")
+        scope["query_string"] = urlencode([
+            (key, value) for key, value in query_items
+            if key != "__vercel_original_path"
+        ]).encode("latin-1")
     path = scope.get("path", "")
     if path in ("/healthz", "/api/healthz"):
         configured = not bool(_MISSING)
