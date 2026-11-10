@@ -53,3 +53,5 @@ htmlcov/
 _teste_*.txt
 _teste_*_run.log
 
+.vercel
+.env*
