@@ -40,6 +40,7 @@ class DicionarioEapPublico(TypedDict, total=False):
     inclusoes: Annotated[str | None, Field(description="Serviços e componentes incluídos.")]
     exclusoes: Annotated[str | None, Field(description="Serviços e componentes excluídos.")]
     disciplina: Annotated[str | None, Field(description="Disciplina técnica.")]
+    discipline: Annotated[str | None, Field(description="Technical discipline (camelCase alias).")]
     fonte: Annotated[str | list[str] | None, Field(description="Prancha, revisão, memorial ou registro que sustenta o item.")]
     description: Annotated[str | None, Field(description="Package description (camelCase contract alias).")]
     unit: Annotated[str | None, Field(description="Package unit (camelCase contract alias).")]
@@ -57,9 +58,14 @@ class ItemEvidenciaEapPublica(TypedDict, total=False):
 
     __pydantic_config__ = ConfigDict(extra="forbid")
 
+    id: Annotated[str | None, Field(description="Identificador rastreável do item.")]
+    eap_id: Annotated[str | None, Field(description="Identificador EAP (alias).")]
+    eapId: Annotated[str | None, Field(description="Identificador EAP (alias camelCase).")]
+    externalId: Annotated[str | None, Field(description="Identificador externo do item.")]
     quantidade: Annotated[float | None, Field(strict=True, description="Quantidade planejada comprovada; positiva para cobertura.")]
     plannedQuantity: Annotated[float | None, Field(strict=True, description="Quantidade planejada (alias camelCase de quantidade).")]
     quantity: Annotated[float | None, Field(strict=True, description="Quantidade planejada (alias inglês de quantidade).")]
+    unit: Annotated[str | None, Field(description="Unidade da quantidade (alias inglês).")]
     produtividade: Annotated[float | None, Field(strict=True, description="Produtividade comprovada; positiva para cobertura.")]
     productivity: Annotated[float | None, Field(strict=True, description="Produtividade (alias camelCase de produtividade).")]
     fonte: Annotated[str | list[str] | None, Field(description="Uma ou mais fontes rastreáveis do item.")]

@@ -168,3 +168,29 @@ def test_each_incomplete_item_is_returned_with_a_traceable_reference():
         "fonte": "FD639-HID-018-R06::linha-14",
         "lacunas": ["produtividade", "unidade_quantidade", "unidade_produtividade", "dicionario_minimo"],
     }]
+
+
+def test_public_item_schema_accepts_id_and_uses_it_for_gap_reference():
+    from pydantic import TypeAdapter
+    from eap_evidence_contract import ItemEvidenciaEapPublica
+
+    item = TypeAdapter(ItemEvidenciaEapPublica).validate_python({
+        "id": "FIRE-A-LOW",
+        "dicionario": {"code": "FIRE-A-LOW", "description": "Incêndio níveis inferiores"},
+    })
+    result = auditar_cobertura_evidencias([item])
+
+    assert result["itens_com_lacunas"][0]["referencia"] == "FIRE-A-LOW"
+
+
+def test_public_item_schema_accepts_english_unit_and_discipline_aliases():
+    from pydantic import TypeAdapter
+    from eap_evidence_contract import ItemEvidenciaEapPublica
+
+    item = TypeAdapter(ItemEvidenciaEapPublica).validate_python({
+        "unit": "un",
+        "dictionary": {"discipline": "fundação"},
+    })
+
+    assert item["unit"] == "un"
+    assert item["dictionary"]["discipline"] == "fundação"
