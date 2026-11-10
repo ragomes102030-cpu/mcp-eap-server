@@ -18,6 +18,15 @@ def test_missing_quantity_units_and_measurement_dictionary_are_reported_as_gaps(
     assert result["cobertura"]["unidade_quantidade"] == {"preenchidos": 0, "total": 1}
     assert result["cobertura"]["unidade_produtividade"] == {"preenchidos": 0, "total": 1}
     assert {"dicionario_minimo", "unidade_quantidade", "unidade_produtividade"} <= set(result["lacunas"])
+    assert result["status"] == "LACUNAS_DE_EVIDENCIA"
+
+
+def test_empty_input_is_not_reported_as_a_complete_or_approved_audit():
+    result = auditar_cobertura_evidencias([])
+
+    assert result["status"] == "SEM_ITENS_AUDITADOS"
+    assert result["validacao_tecnica"] is False
+    assert result["lacunas"]
 
 
 def test_complete_dictionary_requires_code_unit_measurement_location_and_owner():
@@ -42,6 +51,9 @@ def test_complete_dictionary_requires_code_unit_measurement_location_and_owner()
     assert result["cobertura"]["dicionario_minimo"] == {"preenchidos": 1, "total": 1}
     assert result["cobertura"]["unidade_quantidade"] == {"preenchidos": 1, "total": 1}
     assert result["cobertura"]["unidade_produtividade"] == {"preenchidos": 1, "total": 1}
+    assert result["status"] == "COBERTURA_COMPLETA_PENDENTE_VALIDACAO_TECNICA"
+    assert result["validacao_tecnica"] is False
+    assert "fonte em nível de item" in result["limite_validacao"]
     assert result["lacunas"] == []
 
 

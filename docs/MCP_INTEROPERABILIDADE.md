@@ -1,6 +1,6 @@
 # MCP EAP — contrato público, interoperabilidade e segurança
 
-Data da revisão: 2026-11-09. A regra ampliada do dicionário mínimo e a cobertura explícita das unidades estão em validação local; não afirmar que a URL de produção já oferece essa regra antes de novo deployment e smoke.
+Data da revisão: 2026-11-10. A regra ampliada do dicionário mínimo, a cobertura explícita das unidades e o status que separa cobertura de aprovação técnica estão em validação local; não afirmar que a URL de produção já oferece essas regras antes de novo deployment e smoke.
 
 ## Como conectar um cliente MCP
 
@@ -26,7 +26,9 @@ Data da revisão: 2026-11-09. A regra ampliada do dicionário mínimo e a cobert
 - Marcadores de estado sem evidência (`PENDENTE`, `A CONFIRMAR`, `A DEFINIR`, `NAO_DECLARADA`, `SEM DADO`, `N/A` e aliases) não contam como campos preenchidos.
 - `itens_com_lacunas` identifica cada item incompleto por código, ID, fonte ou índice de entrada e lista as categorias ausentes; os totais agregados continuam em `cobertura`.
 
-O resultado mede presença de quantidade e produtividade positivas, suas unidades, fonte rastreável e dicionário mínimo completo. Não confirma que uma prancha está aprovada, que quantidade, produtividade, critério ou aceite estão tecnicamente corretos, que as unidades são compatíveis, nem que a EAP cobre 100% do escopo. `persistido: false` significa que a chamada não grava dados. A validação de IDs/pais/níveis é ferramenta separada e não substitui esta auditoria.
+O resultado mede presença de quantidade e produtividade positivas, suas unidades, fonte rastreável em nível de item e dicionário mínimo completo. Não confirma que uma prancha está aprovada, que quantidade, produtividade, critério ou aceite estão tecnicamente corretos, que cada fonte sustenta cada campo, que as unidades são compatíveis, nem que a EAP cobre 100% do escopo. `persistido: false` significa que a chamada não grava dados. A validação de IDs/pais/níveis é ferramenta separada e não substitui esta auditoria.
+
+O retorno inclui `status`, com `SEM_ITENS_AUDITADOS`, `LACUNAS_DE_EVIDENCIA` ou `COBERTURA_COMPLETA_PENDENTE_VALIDACAO_TECNICA`. Também inclui `validacao_tecnica: false` em todos os casos: cobertura completa não equivale a aprovação técnica, liberação de revisão ou prova da fonte por campo.
 
 ## Compatibilidade
 

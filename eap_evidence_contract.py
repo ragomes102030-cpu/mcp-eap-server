@@ -174,6 +174,11 @@ def auditar_cobertura_evidencias(itens: list[dict]) -> dict:
         key: sum(item_checks[key] for item_checks in detalhes)
         for key in categorias
     }
+    lacunas = (
+        list(checks)
+        if total == 0
+        else [key for key, count in checks.items() if count < total]
+    )
     itens_com_lacunas = []
     for index, (item, item_checks) in enumerate(zip(itens, detalhes), start=1):
         lacunas_item = [key for key in categorias if not item_checks[key]]
@@ -197,10 +202,26 @@ def auditar_cobertura_evidencias(itens: list[dict]) -> dict:
             "fonte": fonte,
             "lacunas": lacunas_item,
         })
+    if total == 0:
+        status = "SEM_ITENS_AUDITADOS"
+    elif lacunas:
+        status = "LACUNAS_DE_EVIDENCIA"
+    else:
+        # Presence coverage is not a technical approval or proof that a cited
+        # source supports each individual field.
+        status = "COBERTURA_COMPLETA_PENDENTE_VALIDACAO_TECNICA"
+
     return {
+        "status": status,
+        "validacao_tecnica": False,
+        "limite_validacao": (
+            "A auditoria verifica presença e formato básico dos campos; não confirma "
+            "correção técnica, revisão liberada, compatibilidade dimensional, nem se "
+            "a fonte em nível de item sustenta cada campo individualmente."
+        ),
         "total": total,
         "cobertura": {key: {"preenchidos": count, "total": total} for key, count in checks.items()},
         "itens_com_lacunas": itens_com_lacunas,
         # An empty payload is not evidence of full coverage (avoid a false green 0/0).
-        "lacunas": list(checks) if total == 0 else [key for key, count in checks.items() if count < total],
+        "lacunas": lacunas,
     }
