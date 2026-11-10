@@ -60,6 +60,8 @@ class TestDualProtocol(unittest.TestCase):
             json={"jsonrpc": "2.0", "id": 42, "method": method, "params": params},
             headers=headers)
         self.assertEqual(response.status_code, 200, response.text[:800])
+        self.assertIn("content-length", response.headers)
+        self.assertGreater(len(response.content), 0)
         payload = response.json()
         self.assertIn("result", payload, payload)
         return payload["result"]

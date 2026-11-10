@@ -12,6 +12,7 @@ from contextlib import AsyncExitStack
 
 from public_mcp import public_app as _public_app
 from mcp_public_origins import allowed_public_origins
+from mcp_response_framing import buffer_json_response
 
 # Vercel Marketplace Turso provides different names from the legacy Render setup.
 if os.environ.get("VERCEL") == "1":
@@ -154,7 +155,11 @@ async def app(scope, receive, send):
         public_scope = dict(scope)
         public_scope["path"] = "/mcp"
         public_scope["raw_path"] = b"/mcp"
-        await _public_app(public_scope, receive, send_public)
+        # Stateless public MCP responses are JSON-only. An explicit length
+        # avoids malformed chunk framing observed through Vercel on modern
+        # protocol replies, while ordinary JSON probes above remain unchanged.
+        response_sender = buffer_json_response(send_public) if method == "POST" else send_public
+        await _public_app(public_scope, receive, response_sender)
         return
     if path not in ("/mcp", "/api/index", "/internal/eap-node", "/api/internal"):
         await _send_json(send, 404, {"ok": False, "error": "Not found"})
